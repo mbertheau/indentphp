@@ -22,6 +22,7 @@ parser Php:
     token CR:               "\r"
     token LF:               "\n"
     token WHITESPACE:       "[ \t\r\n]"
+    token IDENTIFIER:       "[a-zA-Z_][a-zA-Z_0-9]*"
     token CHAR:             "."
 
     rule main:              {{ result = [] }}
@@ -33,22 +34,40 @@ parser Php:
 
     rule html:              {{ result = [] }} (
                             CHAR {{ result.append(CHAR) }}
+                            | WHITESPACE {{ result.append(WHITESPACE) }}
                             )+ {{ return ('html', ''.join(result)) }}
 
     rule script:            PHPSTART {{ result = [] }}
                             ( 
-                            whitespace {{ result.append(('whitespace', whitespace)) }}
-                            | slash_comment {{ result.append(('slash_comment', slash_comment)) }}
-                            | hash_comment {{ result.append(('hash_comment', hash_comment)) }}
-                            | statement {{ result.append(('statement', statement)) }}
+                            whitespace {{ result.append(whitespace) }}
+                            | slash_comment {{ result.append(slash_comment) }}
+                            | hash_comment {{ result.append(hash_comment) }}
+                            | statement {{ result.append(statement) }}
+                            | function_declaration_statement {{ result.append(('function', function_declaration_statement)) }}
                             )*
                             PHPEND {{ return ('php', result) }}
 
-    rule slash_comment:     "//" comment_to_eol {{ return comment_to_eol }}
+    rule opt_comment:       {{ result = [] }} (
+                            whitespace
+                            | slash_comment {{ result.append(slash_comment) }}
+                            | hash_comment {{ result.append(hash_comment) }}
+                            )* {{ return result }}
 
-    rule hash_comment:      "#" comment_to_eol {{ return comment_to_eol }}
+    rule slash_comment:     "//" comment_to_eol {{ return ('slash_comment', comment_to_eol) }}
 
-    rule statement:         "statement;" {{ return 'statement;' }}
+    rule hash_comment:      "#" comment_to_eol {{ return ('hash_comment', comment_to_eol) }}
+
+    rule function_declaration_statement: {{ is_reference = False; function_comment = None }}
+                            "function"
+                            whitespace
+                            [ "&" {{ is_reference = True }} ]
+                            IDENTIFIER opt_whitespace
+                            '\\(' opt_whitespace '\\)' opt_comment {{ function_comment = opt_comment }}
+                            '{' opt_whitespace
+                            statement opt_whitespace
+                            '}' {{ return (is_reference, IDENTIFIER, function_comment, statement) }}
+
+    rule statement:         "statement;" {{ return ('statement', 'statement;') }}
 
     rule comment_to_eol:    {{ result = [] }}
                             (
@@ -62,10 +81,11 @@ parser Php:
                             | LF {{ result = LF }}
                             ) {{ return result }}
 
+    rule opt_whitespace:    {{ result = None }} [ whitespace {{ result = whitespace }} ] {{ return result }}
     rule whitespace:        {{ result = [] }}
                             (
                             WHITESPACE {{ result.append(WHITESPACE) }}
-                            )+ {{ return ''.join(result) }}
+                            )+ {{ return ('whitespace', ''.join(result)) }}
 
 %%
 
@@ -78,7 +98,7 @@ class Writer:
             if item[0] == 'html':
                 sys.stdout.write(item[1])
             if item[0] == 'php':
-                sys.stdout.write('<?php\n')
+                sys.stdout.write('<?php\n\n')
                 self.out_php(item[1])
                 sys.stdout.write('\n?>')
 
@@ -88,11 +108,36 @@ class Writer:
             if item[0] == 'whitespace':
                 pass # skip whitespace
             if item[0] == 'hash_comment':
-                sys.stdout.write('# ' + item[1][0].strip() + '\n')
+                self.out_comment(item)
             if item[0] == 'slash_comment':
-                sys.stdout.write('// ' + item[1][0].strip() + '\n')
+                self.out_comment(item)
+            if item[0] == 'function':
+                self.out_function(item[1])
             if item[0] == 'statement':
-                sys.stdout.write(item[1] + '\n')
+                self.out_statement(item)
+
+    def out_statement(self, statement):
+        sys.stdout.write(statement[1] + '\n')
+
+    def out_comment(self, comment):
+        if comment[0] == 'slash_comment':
+            sys.stdout.write('// ')
+        if comment[0] == 'hash_comment':
+            sys.stdout.write('# ')
+        sys.stdout.write(comment[1][0].strip() + '\n')
+
+    def out_function(self, function):
+        sys.stdout.write('\n')
+        if function[2]:
+            for comment in function[2]:
+                self.out_comment(comment)
+        ref = ''
+        if function[0]:
+            ref = '&'
+        sys.stdout.write('function %s%s()\n{\n%s' % (ref, function[1], strIndent))
+        self.out_statement(function[3])
+        sys.stdout.write('}\n')
+        
 
 def main():
     #parse('main', file('Postgres.php').read())
@@ -102,8 +147,16 @@ def main():
     //comment2
     statement;
     //comment 3
-    ?></title></head></html>""")
+    function foobar() // comment for foobar
+    { statement; }
+    function &bar()#comment for bar typo3 style
+    { statement; }
+    ?></title></head></html>
+""")
 
+    if not ast:
+        return
+    print ast
     writer = Writer(ast)
     writer.out()
 
