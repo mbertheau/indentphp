@@ -171,7 +171,7 @@ def main():
     //comment2
     statement;
     //comment 3
-    function foobar($foobar, $barbaz) // comment for foobar
+    function foobar($foobar,$barbaz , $quux) // comment for foobar
     { statement; }
 #comment for bar typo3 style
     function &bar()
