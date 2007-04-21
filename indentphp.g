@@ -109,7 +109,7 @@ class Writer:
             if item[0] == 'html':
                 sys.stdout.write(item[1])
             if item[0] == 'php':
-                sys.stdout.write('<?php\n\n')
+                sys.stdout.write('<?php\n')
                 self.out_php(item[1])
                 sys.stdout.write('\n?>')
 
@@ -131,6 +131,7 @@ class Writer:
         sys.stdout.write(statement[1] + '\n')
 
     def out_comment(self, comment):
+        sys.stdout.write('\n')
         if comment[0] == 'slash_comment':
             sys.stdout.write('// ')
         if comment[0] == 'hash_comment':
@@ -172,7 +173,8 @@ def main():
     //comment 3
     function foobar($foobar, $barbaz) // comment for foobar
     { statement; }
-    function &bar()#comment for bar typo3 style
+#comment for bar typo3 style
+    function &bar()
     { statement; }
     ?></title></head></html>
 """)
