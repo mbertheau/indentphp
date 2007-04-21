@@ -62,10 +62,21 @@ parser Php:
                             whitespace
                             [ "&" {{ is_reference = True }} ]
                             IDENTIFIER opt_whitespace
-                            '\\(' opt_whitespace '\\)' opt_comment {{ function_comment = opt_comment }}
+                            '\\(' opt_parameter_list '\\)' opt_comment {{ function_comment = opt_comment }}
                             '{' opt_whitespace
                             statement opt_whitespace
-                            '}' {{ return (is_reference, IDENTIFIER, function_comment, statement) }}
+                            '}' {{ return (is_reference, IDENTIFIER, opt_parameter_list, function_comment, statement) }}
+
+    rule opt_parameter_list:{{ result = None }}
+                            [ parameter_list {{ result = parameter_list }} ]
+                            {{ return result }}
+    
+    rule parameter_list:    {{ result = [] }}
+                            parameter {{ result.append(parameter) }}
+                            ( ',' opt_whitespace parameter {{ result.append(parameter) }} )*
+                            {{ return result }}
+
+    rule parameter:         "\$" IDENTIFIER opt_whitespace {{ return ('parameter', IDENTIFIER) }}
 
     rule statement:         "statement;" {{ return ('statement', 'statement;') }}
 
@@ -128,16 +139,28 @@ class Writer:
 
     def out_function(self, function):
         sys.stdout.write('\n')
-        if function[2]:
-            for comment in function[2]:
+        if function[3]:
+            for comment in function[3]:
                 self.out_comment(comment)
         ref = ''
         if function[0]:
             ref = '&'
-        sys.stdout.write('function %s%s()\n{\n%s' % (ref, function[1], strIndent))
-        self.out_statement(function[3])
+        sys.stdout.write('function %s%s(' % (ref, function[1]))
+        self.out_parameter_list(function[2])
+        sys.stdout.write(')\n{\n%s' % strIndent)
+        self.out_statement(function[4])
         sys.stdout.write('}\n')
-        
+    
+    def out_parameter_list(self, parameter_list):
+        if parameter_list is None:
+            return
+        out_parameters = []
+        for parameter in parameter_list:
+            out_parameters.append(self.out_parameter(parameter))
+        sys.stdout.write(", ".join(out_parameters))
+
+    def out_parameter(self, parameter):
+        return "$%s" % parameter[1]
 
 def main():
     #parse('main', file('Postgres.php').read())
@@ -147,7 +170,7 @@ def main():
     //comment2
     statement;
     //comment 3
-    function foobar() // comment for foobar
+    function foobar($foobar, $barbaz) // comment for foobar
     { statement; }
     function &bar()#comment for bar typo3 style
     { statement; }
