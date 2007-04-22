@@ -30,127 +30,149 @@ parser Php:
     token CONSTANT_SQ_STRING: "\'([^$\'\\\\]|(\\\\.))*\'"
     token CHAR:             "."
 
-    rule main:              {{ result = [] }}
-                            (
-                              html {{ result.append(html) }}
-                            | script {{ result.append(script) }}
+    rule main:                              {{ result = [] }}
+                            ( html          {{ result.append(html) }}
+                            | script        {{ result.append(script) }}
                             )*
-                            END {{ return result }}
+                            END             {{ return result }}
 
-    rule html:              {{ result = [] }} (
-                            CHAR {{ result.append(CHAR) }}
-                            | WHITESPACE {{ result.append(WHITESPACE) }}
-                            )+ {{ return ('html', ''.join(result)) }}
+    rule html:                              {{ result = [] }} (
+                              CHAR          {{ result.append(CHAR) }}
+                            | WHITESPACE    {{ result.append(WHITESPACE) }}
+                            )+              {{ return ('html', ''.join(result)) }}
 
-    rule script:            PHPSTART {{ result = [] }}
-                            ( 
-                            whitespace {{ result.append(whitespace) }}
+    rule script:            PHPSTART        {{ result = [] }}
+                            ( whitespace    {{ result.append(whitespace) }}
                             | slash_comment {{ result.append(slash_comment) }}
-                            | hash_comment {{ result.append(hash_comment) }}
-                            | statement {{ result.append(statement) }}
-                            | function_declaration_statement {{ result.append(('function', function_declaration_statement)) }}
+                            | hash_comment  {{ result.append(hash_comment) }}
+                            | statement     {{ result.append(statement) }}
+                            | function_declaration_statement
+                                            {{ result.append(('function', function_declaration_statement)) }}
                             )*
-                            PHPEND {{ return ('php', result) }}
+                            PHPEND          {{ return ('php', result) }}
 
-    rule opt_comment:       {{ result = [] }} (
-                            whitespace
+    rule opt_comment:                       {{ result = [] }}
+                            ( whitespace
                             | slash_comment {{ result.append(slash_comment) }}
-                            | hash_comment {{ result.append(hash_comment) }}
-                            )* {{ return result }}
+                            | hash_comment  {{ result.append(hash_comment) }}
+                            )*              {{ return result }}
 
-    rule slash_comment:     "//" comment_to_eol {{ return ('slash_comment', comment_to_eol) }}
+    rule slash_comment:     "//" comment_to_eol
+                                            {{ return ('slash_comment', comment_to_eol) }}
 
-    rule hash_comment:      "#" comment_to_eol {{ return ('hash_comment', comment_to_eol) }}
+    rule hash_comment:      "#" comment_to_eol
+                                            {{ return ('hash_comment', comment_to_eol) }}
 
-    rule function_declaration_statement: {{ is_reference = False; function_comment = None }}
+    rule function_declaration_statement:    {{ is_reference = False; function_comment = None }}
                             "function"
                             whitespace
-                            [ "&" {{ is_reference = True }} ]
+                            [
+                                "&"         {{ is_reference = True }}
+                            ]
                             IDENTIFIER opt_whitespace
-                            "\\(" opt_parameter_list "\\)" opt_comment {{ function_comment = opt_comment }}
+                            "\\(" opt_parameter_list "\\)"
+                            opt_comment     {{ function_comment = opt_comment }}
                             "{" opt_whitespace
                             statement opt_whitespace
-                            "}" {{ return (is_reference, IDENTIFIER, opt_parameter_list, function_comment, statement) }}
+                            "}"             {{ return (is_reference, IDENTIFIER, opt_parameter_list, function_comment, statement) }}
 
-    rule opt_parameter_list:{{ result = None }}
-                            [ parameter_list {{ result = parameter_list }} ]
-                            {{ return result }}
+    rule opt_parameter_list:                {{ result = None }}
+                            [ parameter_list
+                                            {{ result = parameter_list }}
+                            ]               {{ return result }}
     
-    rule parameter_list:    {{ result = [] }}
-                            parameter {{ result.append(parameter) }}
-                            ( "," opt_whitespace parameter {{ result.append(parameter) }} )*
-                            {{ return result }}
+    rule parameter_list:                    {{ result = [] }}
+                            parameter       {{ result.append(parameter) }}
+                            ( "," opt_whitespace parameter
+                                            {{ result.append(parameter) }}
+                            )*              {{ return result }}
 
-    rule parameter:         {{ defarg = None }}
+    rule parameter:                         {{ defarg = None }}
                             "\$" IDENTIFIER opt_whitespace
-                            [ "=" opt_whitespace static_scalar {{ defarg = static_scalar }}
-                            ] opt_whitespace {{ return ('parameter', IDENTIFIER, defarg) }}
+                            [ "=" opt_whitespace static_scalar
+                                            {{ defarg = static_scalar }}
+                            ]
+                            opt_whitespace  {{ return ('parameter', IDENTIFIER, defarg) }}
 
     rule static_scalar:     (
-                            common_scalar {{ return common_scalar }}
-                            | IDENTIFIER {{ id = IDENTIFIER # a constant }}
-                              [ "::" IDENTIFIER {{ return id + "::" + IDENTIFIER }} ]
-                              {{ return id }}
-                            | "\\+" static_scalar {{ return static_scalar }}
-                            | "-" static_scalar {{ return "-" + static_scalar }}
+                            common_scalar   {{ return common_scalar }}
+                            | IDENTIFIER    {{ id = IDENTIFIER # a constant }}
+                              [ "::"
+                              IDENTIFIER    {{ return id + "::" + IDENTIFIER }}
+                              ]             {{ return id }}
+                            | "\\+" static_scalar
+                                            {{ return static_scalar }}
+                            | "-" static_scalar
+                                            {{ return "-" + static_scalar }}
                             | "array" opt_whitespace
                               "\\(" opt_whitespace
                               opt_static_array_pair_list opt_whitespace
-                              "\\)" {{ return ('array', opt_static_array_pair_list) }}
+                              "\\)"         {{ return ('array', opt_static_array_pair_list) }}
                             )
 
     rule opt_static_array_pair_list:
-                            {{ result = [] }}
-                            [ static_array_pair_list {{ result = static_array_pair_list }} ]
-                            {{ return result }}
+                                            {{ result = [] }}
+                            [ static_array_pair_list
+                                            {{ result = static_array_pair_list }}
+                            ]               {{ return result }}
 
     rule static_array_pair_list:
-                            {{ result = [] }}
-                            static_array_element {{ result.append(static_array_element) }}
+                                            {{ result = [] }}
+                            static_array_element
+                                            {{ result.append(static_array_element) }}
                             ( "," opt_whitespace (
-                                {{ return result }}
-                                | static_array_element {{ result.append(static_array_element) }}
+                                            {{ return result }}
+                                | static_array_element
+                                            {{ result.append(static_array_element) }}
                                 )
-                            )*
-                            {{ return result }}
+                            )*              {{ return result }}
 
     rule static_array_element:
-                            {{ value = None }}
-                            static_scalar opt_whitespace {{ key = static_scalar }}
-                            [ "=>" opt_whitespace static_scalar {{ value = static_scalar }}
-                            ] opt_whitespace {{ return ('array_element', key, value) }}
+                                            {{ value = None }}
+                            static_scalar opt_whitespace
+                                            {{ key = static_scalar }}
+                            [ "=>" opt_whitespace static_scalar
+                                            {{ value = static_scalar }}
+                            ]
+                            opt_whitespace  {{ return ('array_element', key, value) }}
                             
 
     rule common_scalar:     (
-                            NUMBER {{ return NUMBER }}
-                            | CONSTANT_DQ_STRING {{ return CONSTANT_DQ_STRING }}
-                            | CONSTANT_SQ_STRING {{ return CONSTANT_SQ_STRING }}
-                            | '__LINE__' {{ return '__LINE__' }}
-                            | '__FILE__' {{ return '__FILE__' }}
-                            | '__CLASS__' {{ return '__CLASS__' }}
-                            | '__METHOD__' {{ return '__METHOD__' }}
-                            | '__FUNCTION__' {{ return '__FUNCTION__' }}
+                            NUMBER          {{ return NUMBER }}
+                            | CONSTANT_DQ_STRING
+                                            {{ return CONSTANT_DQ_STRING }}
+                            | CONSTANT_SQ_STRING
+                                            {{ return CONSTANT_SQ_STRING }}
+                            | '__LINE__'    {{ return '__LINE__' }}
+                            | '__FILE__'    {{ return '__FILE__' }}
+                            | '__CLASS__'   {{ return '__CLASS__' }}
+                            | '__METHOD__'  {{ return '__METHOD__' }}
+                            | '__FUNCTION__'
+                                            {{ return '__FUNCTION__' }}
                             )
 
-    rule statement:         "statement;" {{ return ('statement', 'statement;') }}
+    rule statement:         "statement;"    {{ return ('statement', 'statement;') }}
 
-    rule comment_to_eol:    {{ result = [] }}
+    rule comment_to_eol:                    {{ result = [] }}
                             (
-                            CHAR {{ result.append(CHAR) }}
+                            CHAR            {{ result.append(CHAR) }}
                             )*
-                            eol {{ return (''.join(result), eol) }}
+                            eol             {{ return (''.join(result), eol) }}
 
     rule eol:               (
-                            CR {{ result = CR }}
-                            [ LF {{ result = CR + LF }} ]
-                            | LF {{ result = LF }}
-                            ) {{ return result }}
+                            CR              {{ result = CR }}
+                            [ LF            {{ result = CR + LF }}
+                            ]
+                            | LF            {{ result = LF }}
+                            )               {{ return result }}
 
-    rule opt_whitespace:    {{ result = None }} [ whitespace {{ result = whitespace }} ] {{ return result }}
-    rule whitespace:        {{ result = [] }}
+    rule opt_whitespace:                    {{ result = None }}
+                            [ whitespace    {{ result = whitespace }}
+                            ]               {{ return result }}
+    rule whitespace:                        {{ result = [] }}
                             (
-                            WHITESPACE {{ result.append(WHITESPACE) }}
-                            )+ {{ return ('whitespace', ''.join(result)) }}
+                            WHITESPACE      {{ result.append(WHITESPACE) }}
+                            )+              {{ return ('whitespace', ''.join(result)) }}
 
 %%
 
