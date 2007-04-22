@@ -105,9 +105,9 @@ parser Php:
     rule static_array_pair_list:
                             {{ result = [] }}
                             static_array_element {{ result.append(static_array_element) }}
-                            ( "," (
+                            ( "," opt_whitespace (
                                 {{ return result }}
-                                | opt_whitespace static_array_element {{ result.append(static_array_element) }}
+                                | static_array_element {{ result.append(static_array_element) }}
                                 )
                             )*
                             {{ return result }}
