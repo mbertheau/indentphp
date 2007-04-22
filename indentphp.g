@@ -8,6 +8,7 @@
 # configuration
 
 strIndent = '    '
+lineLength = 80
 
 # end configuration
 
@@ -105,28 +106,31 @@ parser Php:
                             | "-" static_scalar
                                             {{ return "-" + static_scalar }}
                             | "array" opt_whitespace
-                              "\\(" opt_whitespace
-                              opt_static_array_pair_list opt_whitespace
-                              "\\)"         {{ return ('array', opt_static_array_pair_list) }}
+                              opt_static_array_pair_list
+                                            {{ return ('array', opt_static_array_pair_list) }}
                             )
 
     rule opt_static_array_pair_list:
                                             {{ result = [] }}
-                            [ static_array_pair_list
-                                            {{ result = static_array_pair_list }}
-                            ]               {{ return result }}
+                            "\\(" opt_whitespace
+                            static_array_pair_list
+                                            {{ return static_array_pair_list }}
 
     rule static_array_pair_list:
                                             {{ result = [] }}
-                            static_array_element
-                                            {{ result.append(static_array_element) }}
-                            ( "," opt_whitespace (
-                                            {{ return result }}
-                                | static_array_element
-                                            {{ result.append(static_array_element) }}
+                            ( "\\)"         {{ return result }}
+                            | static_array_element
+                                            {{ result.append(static_array_element); static_array_element = None }}
+                              ( "," opt_whitespace
+                                ( "\\)"     {{ return result }}
+                                | static_array_pair_list
+                                            {{ result += static_array_pair_list; static_array_pair_list = None }}
                                 )
-                            )*              {{ return result }}
-
+                              | "\\)"       {{ return result }}
+                              )
+                            )
+                            {{ return result }}
+                            
     rule static_array_element:
                                             {{ value = None }}
                             static_scalar opt_whitespace
@@ -222,31 +226,61 @@ class Writer:
         ref = ''
         if function[0]:
             ref = '&'
-        sys.stdout.write('function %s%s(' % (ref, function[1]))
-        self.out_parameter_list(function[2])
+        fun = 'function %s%s(' % (ref, function[1])
+        sys.stdout.write(fun)
+        self.out_parameter_list(function[2], len(fun))
         sys.stdout.write(')\n{\n%s' % strIndent)
         self.out_statement(function[4])
         sys.stdout.write('}\n')
     
-    def out_parameter_list(self, parameter_list):
+    def out_parameter_list(self, parameter_list, indent):
         if parameter_list is None:
             return
         out_parameters = []
-        for parameter in parameter_list:
-            out_parameters.append(self.out_parameter(parameter))
-        sys.stdout.write(", ".join(out_parameters))
+        pos = indent
+        for i, parameter in enumerate(parameter_list):
+            par = self.out_parameter(parameter)
+            # new line if line length would be > 80 and this is not the first parameter
+            if i != 0:
+                # calculate length of param:
+                # space, param, 1 = comma (if not last param) or ")" if last,
+                space = 1
+                comma_or_closing_paren = 1
+                if pos + space + len(par) + comma_or_closing_paren > lineLength:
+                    sys.stdout.write("\n" + " " * indent)
+                    pos = indent
+                else:
+                    sys.stdout.write(" ")
+                    pos += 1
+            sys.stdout.write(par)
+            pos += len(par)
+            if i < len(parameter_list) - 1:
+                sys.stdout.write(",")
+                pos += 1
 
     def out_parameter(self, parameter):
         res = "$%s" % parameter[1]
         if parameter[2]:
-            res += " = " + parameter[2]
+            res += " = " + self.out_scalar(parameter[2])
+        return res
+
+    def out_scalar(self, scalar):
+        if type(scalar) == tuple:
+            elems = []
+            for elem in scalar[1]:
+                elems.append(self.out_array_elem(elem))
+            return  "array(%s)" % ", ".join(elems)
+        else:
+            return scalar
+
+    def out_array_elem(self, elem):
+        res = elem[1]
+        if elem[2]:
+            res += " => " + self.out_scalar(elem[2])
         return res
 
 def main():
     #parse('main', file('Postgres.php').read())
-    ast = parse('static_scalar', 'array(4,5,)')
-    print ast
-    sys.exit(0)
     ast = parse('main', """<html><head><title><?php
 # hash_comment
 // slash_comment
