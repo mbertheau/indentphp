@@ -31,38 +31,38 @@ parser Php:
     token CONSTANT_SQ_STRING: "\'([^$\'\\\\]|(\\\\.))*\'"
     token CHAR:             "."
 
-    rule main:                              {{ result = [] }}
-                            ( html          {{ result.append(html) }}
-                            | script        {{ result.append(script) }}
+    rule file:                              {{ result = PHPFile() }}
+                            ( html          {{ PHPFile.addPart(html) }}
+                            | script        {{ PHPFile.addPart(script) }}
                             )*
                             END             {{ return result }}
 
-    rule html:                              {{ result = [] }} (
-                              CHAR          {{ result.append(CHAR) }}
-                            | WHITESPACE    {{ result.append(WHITESPACE) }}
-                            )+              {{ return ('html', ''.join(result)) }}
+    rule html:                              {{ result = HTML() }} (
+                              CHAR          {{ result.addPart(CHAR) }}
+                            | WHITESPACE    {{ result.addPart(WHITESPACE) }}
+                            )+              {{ return result }}
 
-    rule script:            PHPSTART        {{ result = [] }}
-                            ( whitespace    {{ result.append(whitespace) }}
-                            | slash_comment {{ result.append(slash_comment) }}
-                            | hash_comment  {{ result.append(hash_comment) }}
-                            | statement     {{ result.append(statement) }}
+    rule script:            PHPSTART        {{ result = Script() }}
+                            ( whitespace    {{ result.addPart(whitespace) }}
+                            | slash_comment {{ result.addPart(slash_comment) }}
+                            | hash_comment  {{ result.addPart(hash_comment) }}
+                            | statement     {{ result.addPart(statement) }}
                             | function_declaration_statement
-                                            {{ result.append(('function', function_declaration_statement)) }}
+                                            {{ result.addPart(function_declaration_statement) }}
                             )*
-                            PHPEND          {{ return ('php', result) }}
+                            PHPEND          {{ return result }}
 
-    rule opt_comment:                       {{ result = [] }}
+    rule opt_comment:                       {{ result = CommentList() }}
                             ( whitespace
-                            | slash_comment {{ result.append(slash_comment) }}
-                            | hash_comment  {{ result.append(hash_comment) }}
+                            | slash_comment {{ result.addPart(slash_comment) }}
+                            | hash_comment  {{ result.addPart(hash_comment) }}
                             )*              {{ return result }}
 
     rule slash_comment:     "//" comment_to_eol
-                                            {{ return ('slash_comment', comment_to_eol) }}
+                                            {{ return SlashComment(comment_to_eol) }}
 
     rule hash_comment:      "#" comment_to_eol
-                                            {{ return ('hash_comment', comment_to_eol) }}
+                                            {{ return HashComment(comment_to_eol) }}
 
     rule function_declaration_statement:    {{ is_reference = False; function_comment = None }}
                             "function"
@@ -75,17 +75,17 @@ parser Php:
                             opt_comment     {{ function_comment = opt_comment }}
                             "{" opt_whitespace
                             statement opt_whitespace
-                            "}"             {{ return (is_reference, IDENTIFIER, opt_parameter_list, function_comment, statement) }}
+                            "}"             {{ return FunctionDeclaration(IDENTIFIER, is_reference, opt_parameter_list, function_comment, statement) }}
 
     rule opt_parameter_list:                {{ result = None }}
                             [ parameter_list
                                             {{ result = parameter_list }}
                             ]               {{ return result }}
     
-    rule parameter_list:                    {{ result = [] }}
-                            parameter       {{ result.append(parameter) }}
+    rule parameter_list:                    {{ result = ParameterList() }}
+                            parameter       {{ result.addParam(parameter) }}
                             ( "," opt_whitespace parameter
-                                            {{ result.append(parameter) }}
+                                            {{ result.addParam(parameter) }}
                             )*              {{ return result }}
 
     rule parameter:                         {{ defarg = None }}
@@ -93,14 +93,14 @@ parser Php:
                             [ "=" opt_whitespace static_scalar
                                             {{ defarg = static_scalar }}
                             ]
-                            opt_whitespace  {{ return ('parameter', IDENTIFIER, defarg) }}
+                            opt_whitespace  {{ return Parameter(IDENTIFIER, defarg) }}
 
     rule static_scalar:     (
                             common_scalar   {{ return common_scalar }}
                             | IDENTIFIER    {{ id = IDENTIFIER # a constant }}
                               [ "::"
-                              IDENTIFIER    {{ return id + "::" + IDENTIFIER }}
-                              ]             {{ return id }}
+                              IDENTIFIER    {{ return ClassConstant(id, IDENTIFIER }}
+                              ]             {{ return Constant(id) }}
                             | "\\+" static_scalar
                                             {{ return static_scalar }}
                             | "-" static_scalar
@@ -180,6 +180,71 @@ parser Php:
 
 %%
 
+class PHPFile:
+    def __init__(self):
+        self.parts = []
+
+    def addPart(self, part):
+        self.parts.append(part)
+
+class HTML:
+    def __init__(self):
+        self.parts = []
+
+    def addPart(self, part):
+        self.parts.append(part)
+
+class Script:
+    def __init__(self):
+        self.parts = []
+
+    def addPart(self, part):
+        self.parts.append(part)
+
+class CommentList:
+    def __init__(self):
+        self.parts = []
+
+    def addPart(self, part):
+        self.parts.append(part)
+
+class ParameterList:
+    def __init__(self):
+        self.params = []
+
+    def addParam(self, param):
+        self.params.append(param)
+
+class Parameter:
+    def __init__(self, name, default_value):
+        self.name = name
+        self.default_value = default_value
+
+class Constant:
+    def __init__(self, name):
+        self.name = name
+
+class ClassConstant:
+    def __init__(self, class_name, name):
+        self.class_name = class_name
+        self.name = name
+
+class SlashComment:
+    def __init__(self, text):
+        self.text = text
+
+class HashComment:
+    def __init__(self, text):
+        self.text = text
+
+class FunctionDeclaration:
+    def __init(self, name, is_reference, params, comment, body):
+        self.name = name
+        self.is_reference = is_reference
+        self.params = params
+        self.comment = comment
+        self.body = body
+
 class Writer:
     def __init__(self, ast):
         self.ast = ast
@@ -240,7 +305,7 @@ class Writer:
         pos = indent
         for i, parameter in enumerate(parameter_list):
             par = self.out_parameter(parameter)
-            # new line if line length would be > 80 and this is not the first parameter
+            # new line if line length would be > lineLength and this is not the first parameter
             if i != 0:
                 # calculate length of param:
                 # space, param, 1 = comma (if not last param) or ")" if last,
@@ -281,7 +346,7 @@ class Writer:
 
 def main():
     #parse('main', file('Postgres.php').read())
-    ast = parse('main', """<html><head><title><?php
+    ast = parse('file', """<html><head><title><?php
 # hash_comment
 // slash_comment
 statement;
