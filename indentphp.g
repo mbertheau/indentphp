@@ -22,7 +22,10 @@ parser Php:
     token CR:               "\r"
     token LF:               "\n"
     token WHITESPACE:       "[ \t\r\n]"
+    token NUMBER:           "(0x[0-9a-fA-F]+|[0-9]+|[0-9]*[\.][0-9]+|[0-9]+[\.][0-9]*)([eE][+-]?[0-9]+)?"
     token IDENTIFIER:       "[a-zA-Z_][a-zA-Z_0-9]*"
+    token CONSTANT_DQ_STRING: "\"([^$\"\\\\]|(\\\\.))*\""
+    token CONSTANT_SQ_STRING: "\'([^$\'\\\\]|(\\\\.))*\'"
     token CHAR:             "."
 
     rule main:              {{ result = [] }}
@@ -62,10 +65,10 @@ parser Php:
                             whitespace
                             [ "&" {{ is_reference = True }} ]
                             IDENTIFIER opt_whitespace
-                            '\\(' opt_parameter_list '\\)' opt_comment {{ function_comment = opt_comment }}
-                            '{' opt_whitespace
+                            "\\(" opt_parameter_list "\\)" opt_comment {{ function_comment = opt_comment }}
+                            "{" opt_whitespace
                             statement opt_whitespace
-                            '}' {{ return (is_reference, IDENTIFIER, opt_parameter_list, function_comment, statement) }}
+                            "}" {{ return (is_reference, IDENTIFIER, opt_parameter_list, function_comment, statement) }}
 
     rule opt_parameter_list:{{ result = None }}
                             [ parameter_list {{ result = parameter_list }} ]
@@ -73,7 +76,7 @@ parser Php:
     
     rule parameter_list:    {{ result = [] }}
                             parameter {{ result.append(parameter) }}
-                            ( ',' opt_whitespace parameter {{ result.append(parameter) }} )*
+                            ( "," opt_whitespace parameter {{ result.append(parameter) }} )*
                             {{ return result }}
 
     rule parameter:         {{ defarg = None }}
@@ -81,7 +84,51 @@ parser Php:
                             [ "=" opt_whitespace static_scalar {{ defarg = static_scalar }}
                             ] opt_whitespace {{ return ('parameter', IDENTIFIER, defarg) }}
 
-    rule static_scalar:     "5" {{ return "5" }}
+    rule static_scalar:     (
+                            common_scalar {{ return common_scalar }}
+                            | IDENTIFIER {{ id = IDENTIFIER # a constant }}
+                              [ "::" IDENTIFIER {{ return id + "::" + IDENTIFIER }} ]
+                              {{ return id }}
+                            | "\\+" static_scalar {{ return static_scalar }}
+                            | "-" static_scalar {{ return "-" + static_scalar }}
+                            | "array" opt_whitespace
+                              "\\(" opt_whitespace
+                              opt_static_array_pair_list opt_whitespace
+                              "\\)" {{ return ('array', opt_static_array_pair_list) }}
+                            )
+
+    rule opt_static_array_pair_list:
+                            {{ result = [] }}
+                            [ static_array_pair_list {{ result = static_array_pair_list }} ]
+                            {{ return result }}
+
+    rule static_array_pair_list:
+                            {{ result = [] }}
+                            static_array_element {{ result.append(static_array_element) }}
+                            ( "," (
+                                {{ return result }}
+                                | opt_whitespace static_array_element {{ result.append(static_array_element) }}
+                                )
+                            )*
+                            {{ return result }}
+
+    rule static_array_element:
+                            {{ value = None }}
+                            static_scalar opt_whitespace {{ key = static_scalar }}
+                            [ "=>" opt_whitespace static_scalar {{ value = static_scalar }}
+                            ] opt_whitespace {{ return ('array_element', key, value) }}
+                            
+
+    rule common_scalar:     (
+                            NUMBER {{ return NUMBER }}
+                            | CONSTANT_DQ_STRING {{ return CONSTANT_DQ_STRING }}
+                            | CONSTANT_SQ_STRING {{ return CONSTANT_SQ_STRING }}
+                            | '__LINE__' {{ return '__LINE__' }}
+                            | '__FILE__' {{ return '__FILE__' }}
+                            | '__CLASS__' {{ return '__CLASS__' }}
+                            | '__METHOD__' {{ return '__METHOD__' }}
+                            | '__FUNCTION__' {{ return '__FUNCTION__' }}
+                            )
 
     rule statement:         "statement;" {{ return ('statement', 'statement;') }}
 
@@ -173,17 +220,30 @@ class Writer:
 
 def main():
     #parse('main', file('Postgres.php').read())
+    ast = parse('static_scalar', 'array(4,5,)')
+    print ast
+    sys.exit(0)
     ast = parse('main', """<html><head><title><?php
-    
-# comment
-    //comment2
+# hash_comment
+// slash_comment
+statement;
+
+function f1() {statement;}
+function f2() // typo3 style comment
+{
     statement;
-    //comment 3
-    function foobar($foobar,$barbaz = 5, $quux) // comment for foobar
-    { statement; }
-#comment for bar typo3 style
-    function &bar()
-    { statement; }
+}
+
+function f3($param) {statement;}
+function f4($p1, $p1 = "foobar", $p2 = 5, $p3 = 5,
+            $p4 = 5e10, $p6 = 'biae\\'feio',
+            $p7 = "ieo\\"ieo", $p8 = __LINE__,
+            $p9 = __FILE__, $p10 = __CLASS__,
+            $p11 = __METHOD__, $p12 = __FUNCTION__,
+            $p13 = CONSTANT, $p14 = Class::class_constant,
+            $p15 = +4, $p16 = -4, $p17 = array("a", "b" => "c"),
+            $p18 = array(), $p19 = array(4,5,))
+{ statement; }
     ?></title></head></html>
 """)
 
