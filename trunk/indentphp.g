@@ -76,7 +76,12 @@ parser Php:
                             ( ',' opt_whitespace parameter {{ result.append(parameter) }} )*
                             {{ return result }}
 
-    rule parameter:         "\$" IDENTIFIER opt_whitespace {{ return ('parameter', IDENTIFIER) }}
+    rule parameter:         {{ defarg = None }}
+                            "\$" IDENTIFIER opt_whitespace
+                            [ "=" opt_whitespace static_scalar {{ defarg = static_scalar }}
+                            ] opt_whitespace {{ return ('parameter', IDENTIFIER, defarg) }}
+
+    rule static_scalar:     "5" {{ return "5" }}
 
     rule statement:         "statement;" {{ return ('statement', 'statement;') }}
 
@@ -161,7 +166,10 @@ class Writer:
         sys.stdout.write(", ".join(out_parameters))
 
     def out_parameter(self, parameter):
-        return "$%s" % parameter[1]
+        res = "$%s" % parameter[1]
+        if parameter[2]:
+            res += " = " + parameter[2]
+        return res
 
 def main():
     #parse('main', file('Postgres.php').read())
@@ -171,7 +179,7 @@ def main():
     //comment2
     statement;
     //comment 3
-    function foobar($foobar,$barbaz , $quux) // comment for foobar
+    function foobar($foobar,$barbaz = 5, $quux) // comment for foobar
     { statement; }
 #comment for bar typo3 style
     function &bar()
