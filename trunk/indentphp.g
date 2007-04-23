@@ -104,7 +104,7 @@ parser Php:
                             | "\\+" static_scalar
                                             {{ return static_scalar }}
                             | "-" static_scalar
-                                            {{ return static_scalar.neg() }}
+                                            {{ static_scalar.neg(); return static_scalar }}
                             | "array" opt_whitespace
                               opt_static_array_pair_list
                                             {{ return StaticArray(opt_static_array_pair_list) }}
@@ -249,14 +249,14 @@ class SlashComment:
         self.text = text
 
     def out(self):
-        return "// %s\n" % self.text
+        return "// %s\n" % self.text.strip()
 
 class HashComment:
     def __init__(self, text):
         self.text = text
 
     def out(self):
-        return "# %s\n" % self.text
+        return "# %s\n" % self.text.strip()
 
 class ParameterList:
     def __init__(self):
@@ -285,7 +285,7 @@ class ParameterList:
                     pos += 1
             res.append(param.out())
             pos += len(param.out())
-            if i < len(self.params):
+            if i < len(self.params) - 1:
                 res.append(',')
                 pos += 1
         return "".join(res)
@@ -343,13 +343,17 @@ class StaticString:
 class StaticNumber:
     def __init__(self, expr):
         self.expr = expr
-        self.negate = False
+        self.negated = False
 
     def neg(self):
-        self.negate = not self.negate
+        self.negated = not self.negated
 
     def out(self):
-        return self.expr
+        res = []
+        if self.negated:
+            res.append('-')
+        res.append(self.expr)
+        return "".join(res)
 
 class CurrentLine:
     def out(self):
@@ -417,105 +421,6 @@ class FunctionDeclaration:
         res.append(self.body.out())
         res.append('}\n')
         return "".join(res)
-
-class Writer:
-    def __init__(self, ast):
-        self.ast = ast
-
-    def out(self):
-        for item in self.ast:
-            if item[0] == 'html':
-                sys.stdout.write(item[1])
-            if item[0] == 'php':
-                sys.stdout.write('<?php\n')
-                self.out_php(item[1])
-                sys.stdout.write('\n?>')
-
-    def out_php(self, ast):
-        self.indent = 0
-        for item in ast:
-            if item[0] == 'whitespace':
-                pass # skip whitespace
-            if item[0] == 'hash_comment':
-                self.out_comment(item)
-            if item[0] == 'slash_comment':
-                self.out_comment(item)
-            if item[0] == 'function':
-                self.out_function(item[1])
-            if item[0] == 'statement':
-                self.out_statement(item)
-
-    def out_statement(self, statement):
-        sys.stdout.write(statement[1] + '\n')
-
-    def out_comment(self, comment):
-        sys.stdout.write('\n')
-        if comment[0] == 'slash_comment':
-            sys.stdout.write('// ')
-        if comment[0] == 'hash_comment':
-            sys.stdout.write('# ')
-        sys.stdout.write(comment[1][0].strip() + '\n')
-
-    def out_function(self, function):
-        sys.stdout.write('\n')
-        if function[3]:
-            for comment in function[3]:
-                self.out_comment(comment)
-        ref = ''
-        if function[0]:
-            ref = '&'
-        fun = 'function %s%s(' % (ref, function[1])
-        sys.stdout.write(fun)
-        self.out_parameter_list(function[2], len(fun))
-        sys.stdout.write(')\n{\n%s' % strIndent)
-        self.out_statement(function[4])
-        sys.stdout.write('}\n')
-    
-    def out_parameter_list(self, parameter_list, indent):
-        if parameter_list is None:
-            return
-        out_parameters = []
-        pos = indent
-        for i, parameter in enumerate(parameter_list):
-            par = self.out_parameter(parameter)
-            # new line if line length would be > lineLength and this is not the first parameter
-            if i != 0:
-                # calculate length of param:
-                # space, param, 1 = comma (if not last param) or ")" if last,
-                space = 1
-                comma_or_closing_paren = 1
-                if pos + space + len(par) + comma_or_closing_paren > lineLength:
-                    sys.stdout.write("\n" + " " * indent)
-                    pos = indent
-                else:
-                    sys.stdout.write(" ")
-                    pos += 1
-            sys.stdout.write(par)
-            pos += len(par)
-            if i < len(parameter_list) - 1:
-                sys.stdout.write(",")
-                pos += 1
-
-    def out_parameter(self, parameter):
-        res = "$%s" % parameter[1]
-        if parameter[2]:
-            res += " = " + self.out_scalar(parameter[2])
-        return res
-
-    def out_scalar(self, scalar):
-        if type(scalar) == tuple:
-            elems = []
-            for elem in scalar[1]:
-                elems.append(self.out_array_elem(elem))
-            return  "array(%s)" % ", ".join(elems)
-        else:
-            return scalar
-
-    def out_array_elem(self, elem):
-        res = elem[1]
-        if elem[2]:
-            res += " => " + self.out_scalar(elem[2])
-        return res
 
 def main():
     #parse('main', file('Postgres.php').read())
