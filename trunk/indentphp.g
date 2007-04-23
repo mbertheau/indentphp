@@ -183,14 +183,24 @@ parser Php:
                                             {{ result.append(class_statement) }}
                             )*              {{ return result }}
 
-    rule class_statement:   ( variable_modifiers class_variable_declaration_list ";" opt_whitespace
+    rule class_statement:   ( variable_modifiers class_variable_declaration_list ";"
                                             {{ return ClassVariableList(variable_modifiers, class_variable_declaration_list) }}
+                              | class_constant_declaration ";"
+                                            {{ return ClassConstantDeclList(class_constant_declaration) }}
                               | statement   {{ return statement }}
                             )
 
+    rule class_constant_declaration:        {{ result = [] }}
+                            "const" opt_whitespace
+                            IDENTIFIER opt_whitespace "=" opt_whitespace static_scalar opt_whitespace
+                                            {{ result.append(ClassConstantDeclaration(IDENTIFIER, static_scalar)) }}
+                            ( "," opt_whitespace IDENTIFIER opt_whitespace "=" opt_whitespace static_scalar
+                                            {{ result.append(ClassConstantDeclaration(IDENTIFIER, static_scalar)) }}
+                            )*              {{ return result }}
+
     rule class_variable_declaration_list:   {{ result = [] }}
                             class_variable_declaration opt_whitespace
-                                            {{ result.append(ClassVariable(class_variable_declaration[0])) }}
+                                            {{ result.append(ClassVariable(class_variable_declaration[0], class_variable_declaration[1])) }}
                             ( "," opt_whitespace
                               class_variable_declaration
                               opt_whitespace
@@ -529,12 +539,13 @@ class ClassVariableList:
         self.vars = vars
 
     def out(self):
-        res = [strIndent]
+        res = []
         res.append(" ".join(self.modifiers))
         varsout = []
         for var in self.vars:
             varsout.append(var.out())
         res.append("%s;\n" % " ".join(varsout))
+        return "".join(res)
 
 class ClassVariable:
     def __init__(self, name, value = None):
@@ -547,6 +558,24 @@ class ClassVariable:
             res.append(" = %s" % self.value.out())
         return "".join(res)
 
+class ClassConstantDeclList:
+    def __init__(self, constants):
+        self.constants = constants
+
+    def out(self):
+        constout = []
+        for constant in self.constants:
+            constout.append(constant.out())
+        return "const %s;\n" % ", ".join(constout)
+
+class ClassConstantDeclaration:
+    def __init__(self, name, value):
+        self.name = name
+        self.value = value
+
+    def out(self):
+        return "%s = %s" % (self.name, self.value.out())
+
 def main():
     #parse('main', file('Postgres.php').read())
     ast = parse('file', """<html><head><title><?php
@@ -555,8 +584,8 @@ def main():
 statement;
 
 class a { statement; }
-final class b { var $f; statement; }
-abstract class c { statement; }
+final class b { var $f; var $f = 5; var $f=array("foobar"=>array(5,5),"barbaz"=>array(3,3)); statement; }
+abstract class c { const a = 4, b = "das ist ein string"; statement; }
 class d extends a { statement; statement; }
 class e implements i { statement; }
 class f extends a implements i { statement; }
