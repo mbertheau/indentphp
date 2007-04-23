@@ -49,6 +49,8 @@ parser Php:
                             | statement     {{ result.addPart(statement) }}
                             | function_declaration_statement
                                             {{ result.addPart(function_declaration_statement) }}
+                            | class_declaration_statement
+                                            {{ result.addPart(class_declaration_statement) }}
                             )*
                             PHPEND          {{ return result }}
 
@@ -153,7 +155,38 @@ parser Php:
                             | '__METHOD__'  {{ return CurrentMethod() }}
                             | '__FUNCTION__'
                                             {{ return CurrentFunction() }}
+                                      )
+
+    rule class_declaration_statement:       {{ abstract = False; final = False; extends = None; implements = None; statements = None; }}
+                            ( "abstract" opt_whitespace "class" opt_whitespace
+                                            {{ abstract = True }}
+                            | "final" opt_whitespace "class" opt_whitespace 
+                                            {{ final = True }}
+                            | "class" opt_whitespace
                             )
+                            IDENTIFIER opt_whitespace
+                                            {{ name = IDENTIFIER }}
+                            [ "extends" opt_whitespace IDENTIFIER opt_whitespace
+                                            {{ extends = IDENTIFIER }}
+                            ]
+
+                            [ "implements" opt_whitespace interface_list opt_whitespace
+                                            {{ implements = interface_list }}
+                            ]
+                            "{" opt_whitespace
+                            class_statement_list
+                                            {{ statements = class_statement_list }}
+                            "}" opt_whitespace
+                                            {{ return ClassDeclaration(abstract, final, name, extends, implements, statements) }}
+
+    rule class_statement_list:
+                            statement opt_whitespace
+                                            {{ return statement }}
+    rule interface_list:    IDENTIFIER opt_whitespace
+                                            {{ result = [IDENTIFIER] }}
+                            ( "," opt_whitespace IDENTIFIER opt_whitespace
+                                            {{ result.append(IDENTIFIER) }}
+                            )*              {{ return result }}
 
     rule statement:         "statement;"    {{ return Statement() }}
 
@@ -422,12 +455,42 @@ class FunctionDeclaration:
         res.append('}\n')
         return "".join(res)
 
+class ClassDeclaration:
+    def __init__(self, abstract, final, name, extends, implements, statements):
+        self.abstract = abstract
+        self.final = final
+        self.name = name
+        self.extends = extends
+        self.implements = implements
+        self.statements = statements
+
+    def out(self):
+        res = ['\n']
+        if self.abstract:
+            res.append('abstract ')
+        if self.final:
+            res.append('final ')
+        res.append('class %s' % self.name)
+        if self.extends:
+            res.append(' extends %s' % self.extends)
+        res.append('\n{\n')
+        res.append('    %s' % self.statements.out())
+        res.append('}\n')
+        return "".join(res)
+
 def main():
     #parse('main', file('Postgres.php').read())
     ast = parse('file', """<html><head><title><?php
 # hash_comment
 // slash_comment
 statement;
+
+class a { statement; }
+final class b { statement; }
+abstract class c { statement; }
+class d extends a { statement; }
+class e implements i { statement; }
+class f extends a implements i { statement; }
 
 function f1() {statement;}
 function f2() // typo3 style comment
