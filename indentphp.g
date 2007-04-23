@@ -69,8 +69,7 @@ parser Php:
     rule function_declaration_statement:    {{ is_reference = False; function_comment = None }}
                             "function"
                             whitespace
-                            [
-                                "&"         {{ is_reference = True }}
+                            [ "&"           {{ is_reference = True }}
                             ]
                             IDENTIFIER opt_whitespace
                             "\\(" opt_parameter_list "\\)"
@@ -157,7 +156,7 @@ parser Php:
                                             {{ return CurrentFunction() }}
                                       )
 
-    rule class_declaration_statement:       {{ abstract = False; final = False; extends = None; implements = None; statements = None; }}
+    rule class_declaration_statement:       {{ abstract = False; final = False; extends = None; implements = None; statements = []; }}
                             ( "abstract" opt_whitespace "class" opt_whitespace
                                             {{ abstract = True }}
                             | "final" opt_whitespace "class" opt_whitespace 
@@ -179,9 +178,11 @@ parser Php:
                             "}" opt_whitespace
                                             {{ return ClassDeclaration(abstract, final, name, extends, implements, statements) }}
 
-    rule class_statement_list:
-                            statement opt_whitespace
-                                            {{ return statement }}
+    rule class_statement_list:              {{ result = [] }}
+                            ( statement opt_whitespace
+                                            {{ result.append(statement) }}
+                            )*              {{ return result }}
+
     rule interface_list:    IDENTIFIER opt_whitespace
                                             {{ result = [IDENTIFIER] }}
                             ( "," opt_whitespace IDENTIFIER opt_whitespace
@@ -474,7 +475,8 @@ class ClassDeclaration:
         if self.extends:
             res.append(' extends %s' % self.extends)
         res.append('\n{\n')
-        res.append('    %s' % self.statements.out())
+        for statement in self.statements:
+            res.append('    %s' % statement.out())
         res.append('}\n')
         return "".join(res)
 
@@ -488,7 +490,7 @@ statement;
 class a { statement; }
 final class b { statement; }
 abstract class c { statement; }
-class d extends a { statement; }
+class d extends a { statement; statement; }
 class e implements i { statement; }
 class f extends a implements i { statement; }
 
