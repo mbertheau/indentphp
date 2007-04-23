@@ -1,0 +1,10 @@
+indentphp (c) 2007 Markus Bertheau
+indentphp is released under the GNU General Public License Version 2
+
+= Usage =
+
+yapps indentphp.g
+python ./indentphp.py
+
+At the moment you have to change the PHP code in indentphp.g to make it indent
+something other than what is in there now.
