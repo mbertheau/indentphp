@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# vim: set ft=python
+# vim:set ft=python
 
 # indentphp is (c) 2007 by Markus Bertheau
 # indentphp is distributed under the GNU General Public License Version 2
@@ -32,8 +32,8 @@ parser Php:
     token CHAR:             "."
 
     rule file:                              {{ result = PHPFile() }}
-                            ( html          {{ PHPFile.addPart(html) }}
-                            | script        {{ PHPFile.addPart(script) }}
+                            ( html          {{ result.addPart(html) }}
+                            | script        {{ result.addPart(script) }}
                             )*
                             END             {{ return result }}
 
@@ -77,7 +77,7 @@ parser Php:
                             statement opt_whitespace
                             "}"             {{ return FunctionDeclaration(IDENTIFIER, is_reference, opt_parameter_list, function_comment, statement) }}
 
-    rule opt_parameter_list:                {{ result = None }}
+    rule opt_parameter_list:                {{ result = ParameterList() }}
                             [ parameter_list
                                             {{ result = parameter_list }}
                             ]               {{ return result }}
@@ -99,15 +99,15 @@ parser Php:
                             common_scalar   {{ return common_scalar }}
                             | IDENTIFIER    {{ id = IDENTIFIER # a constant }}
                               [ "::"
-                              IDENTIFIER    {{ return ClassConstant(id, IDENTIFIER }}
+                              IDENTIFIER    {{ return ClassConstant(id, IDENTIFIER) }}
                               ]             {{ return Constant(id) }}
                             | "\\+" static_scalar
                                             {{ return static_scalar }}
                             | "-" static_scalar
-                                            {{ return "-" + static_scalar }}
+                                            {{ return static_scalar.neg() }}
                             | "array" opt_whitespace
                               opt_static_array_pair_list
-                                            {{ return ('array', opt_static_array_pair_list) }}
+                                            {{ return StaticArray(opt_static_array_pair_list) }}
                             )
 
     rule opt_static_array_pair_list:
@@ -138,30 +138,30 @@ parser Php:
                             [ "=>" opt_whitespace static_scalar
                                             {{ value = static_scalar }}
                             ]
-                            opt_whitespace  {{ return ('array_element', key, value) }}
+                            opt_whitespace  {{ return StaticArrayElement(key, value) }}
                             
 
     rule common_scalar:     (
-                            NUMBER          {{ return NUMBER }}
+                            NUMBER          {{ return StaticNumber(NUMBER) }}
                             | CONSTANT_DQ_STRING
-                                            {{ return CONSTANT_DQ_STRING }}
+                                            {{ return StaticString(CONSTANT_DQ_STRING) }}
                             | CONSTANT_SQ_STRING
-                                            {{ return CONSTANT_SQ_STRING }}
-                            | '__LINE__'    {{ return '__LINE__' }}
-                            | '__FILE__'    {{ return '__FILE__' }}
-                            | '__CLASS__'   {{ return '__CLASS__' }}
-                            | '__METHOD__'  {{ return '__METHOD__' }}
+                                            {{ return StaticString(CONSTANT_SQ_STRING) }}
+                            | '__LINE__'    {{ return CurrentLine() }}
+                            | '__FILE__'    {{ return CurrentFile() }}
+                            | '__CLASS__'   {{ return CurrentClass() }}
+                            | '__METHOD__'  {{ return CurrentMethod() }}
                             | '__FUNCTION__'
-                                            {{ return '__FUNCTION__' }}
+                                            {{ return CurrentFunction() }}
                             )
 
-    rule statement:         "statement;"    {{ return ('statement', 'statement;') }}
+    rule statement:         "statement;"    {{ return Statement() }}
 
     rule comment_to_eol:                    {{ result = [] }}
                             (
                             CHAR            {{ result.append(CHAR) }}
                             )*
-                            eol             {{ return (''.join(result), eol) }}
+                            eol             {{ return ''.join(result) }}
 
     rule eol:               (
                             CR              {{ result = CR }}
@@ -173,12 +173,13 @@ parser Php:
     rule opt_whitespace:                    {{ result = None }}
                             [ whitespace    {{ result = whitespace }}
                             ]               {{ return result }}
-    rule whitespace:                        {{ result = [] }}
+    rule whitespace:                        {{ result = Whitespace() }}
                             (
-                            WHITESPACE      {{ result.append(WHITESPACE) }}
-                            )+              {{ return ('whitespace', ''.join(result)) }}
+                            WHITESPACE      {{ result.addPart(WHITESPACE) }}
+                            )+              {{ return result }}
 
 %%
+
 
 class PHPFile:
     def __init__(self):
@@ -187,12 +188,24 @@ class PHPFile:
     def addPart(self, part):
         self.parts.append(part)
 
+    def out(self):
+        res = []
+        for part in self.parts:
+            res.append(part.out())
+        return "".join(res)
+
 class HTML:
     def __init__(self):
         self.parts = []
 
     def addPart(self, part):
         self.parts.append(part)
+
+    def out(self):
+        res = []
+        for part in self.parts:
+            res.append(part)
+        return "".join(res)
 
 class Script:
     def __init__(self):
@@ -201,12 +214,49 @@ class Script:
     def addPart(self, part):
         self.parts.append(part)
 
+    def out(self):
+        res = ['<?php\n']
+        for part in self.parts:
+            res.append(part.out())
+        res.append('\n?>')
+        return "".join(res)
+
+class Whitespace:
+    def __init__(self):
+        self.parts = []
+
+    def addPart(self, part):
+        self.parts.append(part)
+
+    def out(self):
+        return ""
+
 class CommentList:
     def __init__(self):
         self.parts = []
 
     def addPart(self, part):
         self.parts.append(part)
+
+    def out(self):
+        res = ["\n"]
+        for part in self.parts:
+            res.append(part.out())
+        return "".join(res)
+
+class SlashComment:
+    def __init__(self, text):
+        self.text = text
+
+    def out(self):
+        return "// %s\n" % self.text
+
+class HashComment:
+    def __init__(self, text):
+        self.text = text
+
+    def out(self):
+        return "# %s\n" % self.text
 
 class ParameterList:
     def __init__(self):
@@ -215,35 +265,158 @@ class ParameterList:
     def addParam(self, param):
         self.params.append(param)
 
+    def out(self, indent):
+        if len(self.params) == 0:
+            return ""
+        pos = indent
+        res = []
+        for i, param in enumerate(self.params):
+            # new line if line length would be > lineLength and this is not the first parameter
+            if i != 0:
+                # calculate space for param:
+                # space, param, comma (if not last param), ")" if last param
+                space = 1
+                comma_or_closing_paren = 1
+                if pos + space + len(param.out()) + comma_or_closing_paren > lineLength:
+                    res.append("\n%s" % (" " * indent))
+                    pos = indent
+                else:
+                    res.append(" ")
+                    pos += 1
+            res.append(param.out())
+            pos += len(param.out())
+            if i < len(self.params):
+                res.append(',')
+                pos += 1
+        return "".join(res)
+
 class Parameter:
     def __init__(self, name, default_value):
         self.name = name
         self.default_value = default_value
 
+    def out(self):
+        res = ["$%s" % self.name]
+        if self.default_value:
+            res.append(" = ")
+            res.append(self.default_value.out())
+        return "".join(res)
+
 class Constant:
     def __init__(self, name):
         self.name = name
+        self.negated = False
+
+    def neg(self):
+        self.negated = not self.negated
+
+    def out(self):
+        res = []
+        if self.negated:
+            res.append('-')
+        res.append(self.name)
+        return "".join(res)
 
 class ClassConstant:
     def __init__(self, class_name, name):
         self.class_name = class_name
         self.name = name
+        self.negated = False
 
-class SlashComment:
-    def __init__(self, text):
-        self.text = text
+    def neg(self):
+        self.negated = not self.negated
 
-class HashComment:
-    def __init__(self, text):
-        self.text = text
+    def out(self):
+        res = []
+        if self.negated:
+            res.append('-')
+        res.append("%s::%s" % (self.class_name, self.name))
+        return "".join(res)
+
+class StaticString:
+    def __init__(self, expr):
+        self.expr = expr
+
+    def out(self):
+        return self.expr
+
+class StaticNumber:
+    def __init__(self, expr):
+        self.expr = expr
+        self.negate = False
+
+    def neg(self):
+        self.negate = not self.negate
+
+    def out(self):
+        return self.expr
+
+class CurrentLine:
+    def out(self):
+        return '__LINE__';
+
+class CurrentFile:
+    def out(self):
+        return '__FILE__';
+
+class CurrentClass:
+    def out(self):
+        return '__CLASS__';
+
+class CurrentMethod:
+    def out(self):
+        return '__METHOD__';
+
+class CurrentFunction:
+    def out(self):
+        return '__FUNCTION__';
+
+class StaticArray:
+    def __init__(self, elements = []):
+        self.elements = elements
+
+    def out(self):
+        res = []
+        for element in self.elements:
+            res.append(element.out())
+        return "array(%s)" % ", ".join(res)
+
+class StaticArrayElement:
+    def __init__(self, key, value = None):
+        self.key = key
+        self.value = value
+
+    def out(self):
+        res = [self.key.out()]
+        if self.value:
+            res.append(' => ')
+            res.append(self.value.out())
+        return "".join(res)
+
+class Statement:
+    def out(self):
+        return "statement;\n"
 
 class FunctionDeclaration:
-    def __init(self, name, is_reference, params, comment, body):
+    def __init__(self, name, is_reference, params, comments, body):
         self.name = name
         self.is_reference = is_reference
         self.params = params
-        self.comment = comment
+        self.comments = comments
         self.body = body
+
+    def out(self):
+        res = [self.comments.out()]
+        ref = ''
+        if self.is_reference:
+            ref = "&"
+        fun = 'function %s%s(' % (ref, self.name)
+        res.append(fun)
+        res.append(self.params.out(len(fun)))
+        res.append(')\n{\n%s' % strIndent)
+        res.append(self.body.out())
+        res.append('}\n')
+        return "".join(res)
 
 class Writer:
     def __init__(self, ast):
@@ -357,6 +530,9 @@ function f2() // typo3 style comment
     statement;
 }
 
+
+
+
 function f3($param) {statement;}
 function f4($p1, $p1 = "foobar", $p2 = 5, $p3 = 5,
             $p4 = 5e10, $p6 = 'biae\\'feio',
@@ -372,9 +548,7 @@ function f4($p1, $p1 = "foobar", $p2 = 5, $p3 = 5,
 
     if not ast:
         return
-    print ast
-    writer = Writer(ast)
-    writer.out()
+    sys.stdout.write(ast.out())
 
 if __name__ == '__main__':
     main()
