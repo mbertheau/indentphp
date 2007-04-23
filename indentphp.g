@@ -179,9 +179,52 @@ parser Php:
                                             {{ return ClassDeclaration(abstract, final, name, extends, implements, statements) }}
 
     rule class_statement_list:              {{ result = [] }}
-                            ( statement opt_whitespace
-                                            {{ result.append(statement) }}
+                            ( class_statement opt_whitespace
+                                            {{ result.append(class_statement) }}
                             )*              {{ return result }}
+
+    rule class_statement:   ( variable_modifiers class_variable_declaration_list ";" opt_whitespace
+                                            {{ return ClassVariableList(variable_modifiers, class_variable_declaration_list) }}
+                              | statement   {{ return statement }}
+                            )
+
+    rule class_variable_declaration_list:   {{ result = [] }}
+                            class_variable_declaration opt_whitespace
+                                            {{ result.append(ClassVariable(class_variable_declaration[0])) }}
+                            ( "," opt_whitespace
+                              class_variable_declaration
+                              opt_whitespace
+                                            {{ result.append(ClassVariable(class_variable_declaration[0], class_variable_declaration[1])) }}
+                            )*              {{ return result }}
+
+    rule class_variable_declaration:        {{ value = None }}
+                            "\$" IDENTIFIER  opt_whitespace 
+                                            {{ name = IDENTIFIER }}
+                            [ "=" opt_whitespace
+                              static_scalar {{ value = static_scalar }}
+                            ]               {{ return (name, value) }}
+
+    rule variable_modifiers:                {{ result = [] }}
+                            ( "var" opt_whitespace
+                            | non_empty_member_modifiers
+                                            {{ result = non_empty_member_modifiers }}
+                            )               {{ return result }}
+
+    rule non_empty_member_modifiers:
+                            member_modifier opt_whitespace
+                                            {{ result = [member_modifier] }}
+                            ( member_modifier opt_whitespace
+                                            {{ result.append(member_modifier) }}
+                            )*              {{ return result }}
+
+    rule member_modifier:
+                            ( "public"      {{ return "public" }}
+                            | "protected"   {{ return "protected" }}
+                            | "private"     {{ return "private" }}
+                            | "static"      {{ return "static" }}
+                            | "abstract"    {{ return "abstract" }}
+                            | "final"       {{ return "final" }}
+                            ) opt_whitespace
 
     rule interface_list:    IDENTIFIER opt_whitespace
                                             {{ result = [IDENTIFIER] }}
@@ -480,6 +523,30 @@ class ClassDeclaration:
         res.append('}\n')
         return "".join(res)
 
+class ClassVariableList:
+    def __init__(self, modifiers, vars):
+        self.modifiers = modifiers
+        self.vars = vars
+
+    def out(self):
+        res = [strIndent]
+        res.append(" ".join(self.modifiers))
+        varsout = []
+        for var in self.vars:
+            varsout.append(var.out())
+        res.append("%s;\n" % " ".join(varsout))
+
+class ClassVariable:
+    def __init__(self, name, value = None):
+        self.name = name
+        self.value = value
+
+    def out(self):
+        res = ["$%s" % self.name]
+        if self.value:
+            res.append(" = %s" % self.value.out())
+        return "".join(res)
+
 def main():
     #parse('main', file('Postgres.php').read())
     ast = parse('file', """<html><head><title><?php
@@ -488,7 +555,7 @@ def main():
 statement;
 
 class a { statement; }
-final class b { statement; }
+final class b { var $f; statement; }
 abstract class c { statement; }
 class d extends a { statement; statement; }
 class e implements i { statement; }
