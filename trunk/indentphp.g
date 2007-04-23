@@ -70,7 +70,7 @@ parser Php:
                             "function"
                             whitespace
                             [ "&"           {{ is_reference = True }}
-                            ]
+                            ] opt_whitespace
                             IDENTIFIER opt_whitespace
                             "\\(" opt_parameter_list "\\)"
                             opt_comment     {{ function_comment = opt_comment }}
@@ -183,12 +183,31 @@ parser Php:
                                             {{ result.append(class_statement) }}
                             )*              {{ return result }}
 
-    rule class_statement:   ( variable_modifiers class_variable_declaration_list ";"
-                                            {{ return ClassVariableList(variable_modifiers, class_variable_declaration_list) }}
-                              | class_constant_declaration ";"
+    rule class_statement:   ( 
+                                class_constant_declaration ";"
                                             {{ return ClassConstantDeclList(class_constant_declaration) }}
+                              | "var" opt_whitespace class_variable_declaration_list ";"
+                                            {{ return ClassVariableList([], class_variable_declaration_list) }}
+                              | member_modifiers opt_whitespace
+                              (
+                                class_variable_declaration_list ";"
+                                            {{ return ClassVariableList(member_modifiers, class_variable_declaration_list) }}
+                                | method_declaration<<member_modifiers>>
+                                            {{ return method_declaration }}
+                              )
+                              | method_declaration<<[]>> {{ return method_declaration }}
                               | statement   {{ return statement }}
                             )
+
+    rule method_declaration<<modifiers>>:   {{ is_reference = False }}
+                            "function" opt_whitespace
+                            [ "&"           {{ is_reference = True }}
+                            ] opt_whitespace
+                            IDENTIFIER opt_whitespace
+                            "\\(" opt_parameter_list "\\)"
+                            opt_comment
+                            "{" opt_whitespace "}"
+                                            {{ return MethodDeclaration(modifiers, IDENTIFIER, is_reference, opt_parameter_list, opt_comment, []) }}
 
     rule class_constant_declaration:        {{ result = [] }}
                             "const" opt_whitespace
@@ -214,13 +233,7 @@ parser Php:
                               static_scalar {{ value = static_scalar }}
                             ]               {{ return (name, value) }}
 
-    rule variable_modifiers:                {{ result = [] }}
-                            ( "var" opt_whitespace
-                            | non_empty_member_modifiers
-                                            {{ result = non_empty_member_modifiers }}
-                            )               {{ return result }}
-
-    rule non_empty_member_modifiers:
+    rule member_modifiers:
                             member_modifier opt_whitespace
                                             {{ result = [member_modifier] }}
                             ( member_modifier opt_whitespace
@@ -576,6 +589,26 @@ class ClassConstantDeclaration:
     def out(self):
         return "%s = %s" % (self.name, self.value.out())
 
+class MethodDeclaration:
+    def __init__(self, modifiers, name, is_reference, params, comment, body):
+        self.modifiers = modifiers
+        self.name = name
+        self.is_reference = is_reference
+        self.params = params
+        self.comment = comment
+        self.body = body
+
+    def out(self):
+        res = []
+        for modifier in self.modifiers:
+            res.append("%s " % modifier)
+        if self.is_reference:
+            res.append("&")
+        res.append("%s(" % self.name)
+        res.append(self.params.out(len("".join(res)) + len(strIndent)))
+        res.append(")\n%s{\n%s}\n" % (strIndent, strIndent))
+        return "".join(res)
+
 def main():
     #parse('main', file('Postgres.php').read())
     ast = parse('file', """<html><head><title><?php
@@ -589,6 +622,10 @@ abstract class c { const a = 4, b = "das ist ein string"; statement; }
 class d extends a { statement; statement; }
 class e implements i { statement; }
 class f extends a implements i { statement; }
+class ftest {
+    function f() {}
+    private function complicatedName($model = array('RecController', 'UsersController'), $flash = 1, $dontUseMe, $pi_TI_link_PiVarsUR_l) {}
+}
 
 function f1() {statement;}
 function f2() // typo3 style comment
