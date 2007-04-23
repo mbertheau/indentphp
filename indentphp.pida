@@ -1,0 +1,77 @@
+# pida generated ini file
+[general]
+# name
+# The name you would like to refer to the project as
+# default value = unnamed
+name = indentphp
+
+# browse_directory
+# Select a source directory for the project
+# default value = /
+browse_directory = /home/markus/src/indentphp
+
+
+[source]
+# uses
+# Whether the project has source code
+# default value = True
+uses = 1
+
+# directory
+# Select a source directory for the project
+# default value = /
+directory = /home/markus/src/indentphp
+
+# uses_vc
+# Whether the project uses version control
+# default value = True
+uses_vc = 1
+
+
+[build]
+# uses
+# Whether this project uses building
+# default value = False
+uses = 0
+
+# command_base
+# The build command
+# default value = 
+command_base = 
+
+
+[execution]
+# uses
+# Whether this project uses execution
+# default value = False
+uses = 0
+
+# command_base
+# The execution command
+# default value = 
+command_base = 
+
+
+[testing]
+# uses
+# Whether this project uses unit testing
+# default value = False
+uses = 0
+
+# command_base
+# The testing command
+# default value = 
+command_base = kiwi.ValueUnset
+
+
+[gui]
+# uses
+# Whether this project has graphical user interface files
+# default value = False
+uses = 0
+
+# location
+# Gui file location
+# default value = /
+location = /
+
