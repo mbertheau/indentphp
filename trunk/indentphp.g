@@ -75,8 +75,8 @@ parser Php:
                             "\\(" opt_parameter_list "\\)"
                             opt_comment     {{ function_comment = opt_comment }}
                             "{" opt_whitespace
-                            statement opt_whitespace
-                            "}"             {{ return FunctionDeclaration(IDENTIFIER, is_reference, opt_parameter_list, function_comment, statement) }}
+                            statement_list opt_whitespace
+                            "}"             {{ return FunctionDeclaration(IDENTIFIER, is_reference, opt_parameter_list, function_comment, statement_list) }}
 
     rule opt_parameter_list:                {{ result = ParameterList() }}
                             [ parameter_list
@@ -196,7 +196,6 @@ parser Php:
                                             {{ return method_declaration }}
                               )
                               | method_declaration<<[]>> {{ return method_declaration }}
-                              | statement   {{ return statement }}
                             )
 
     rule method_declaration<<modifiers>>:   {{ is_reference = False }}
@@ -205,9 +204,18 @@ parser Php:
                             ] opt_whitespace
                             IDENTIFIER opt_whitespace
                             "\\(" opt_parameter_list "\\)"
-                            opt_comment
-                            "{" opt_whitespace "}"
+                            opt_comment opt_whitespace
+                            method_body
                                             {{ return MethodDeclaration(modifiers, IDENTIFIER, is_reference, opt_parameter_list, opt_comment, []) }}
+
+    rule method_body:       ( ";" opt_whitespace {{ return None }}
+                            | "{" opt_whitespace statement_list "}" opt_whitespace {{ return statement_list }}
+                            )
+
+    rule statement_list:                    {{ result = [] }}
+                            ( statement opt_whitespace
+                                            {{ result.append(statement) }}
+                            )*              {{ return result }}
 
     rule class_constant_declaration:        {{ result = [] }}
                             "const" opt_whitespace
@@ -255,7 +263,31 @@ parser Php:
                                             {{ result.append(IDENTIFIER) }}
                             )*              {{ return result }}
 
-    rule statement:         "statement;"    {{ return Statement() }}
+    rule statement:         ( "{" opt_whitespace statement_list "}" opt_whitespace 
+                                            {{ return BlockStatement(statement_list) }}
+                            | "if" opt_whitespace
+                              "\\(" opt_whitespace
+                              expression opt_whitespace
+                              "\\)" opt_whitespace
+                              statement
+                              elseif_list
+                              else_single   {{ return IfStatement(expression, statement, elseif_list, else_single) }}
+                            | "statement;"  {{ return "statement;" }}
+                            )
+
+    rule elseif_list:                       {{ result = [] }}
+                            ( "elseif" opt_whitespace
+                              "\\(" opt_whitespace
+                              expression opt_whitespace
+                              "\\)" opt_whitespace
+                              statement     {{ result.append(ElseifStatement(expression, statement)) }}
+                            )*              {{ return result }}
+
+    rule else_single:       [ "else" statement
+                                            {{ return ElseStatement(statement) }}
+                            ]
+
+    rule expression:        NUMBER          {{ return Expression(NUMBER) }}
 
     rule comment_to_eol:                    {{ result = [] }}
                             (
@@ -602,11 +634,47 @@ class MethodDeclaration:
         res = []
         for modifier in self.modifiers:
             res.append("%s " % modifier)
+        res.append("function ")
         if self.is_reference:
             res.append("&")
         res.append("%s(" % self.name)
         res.append(self.params.out(len("".join(res)) + len(strIndent)))
         res.append(")\n%s{\n%s}\n" % (strIndent, strIndent))
+        return "".join(res)
+
+class Expression:
+    def __init__(self, expr):
+        self.expr = expr;
+
+    def out(self):
+        return self.expr
+
+class BlockStatement:
+    def __init__(self, statement_list):
+        self.statement_list = statement_list
+
+    def out(self):
+        res = []
+        for statement in statement_list:
+            res.append(statement.out())
+        return "".join(res)
+
+class IfStatement:
+    def __init__(self, condition, statement, elseif_list, else_single):
+        self.condition = condition
+        self.statement = statement
+        self.elseif_list = elseif_list
+        self.else_single = else_single
+
+    def out(self):
+        res = ["if ("]
+        res.append(self.condition.out())
+        res.append(")\n")
+        res.append(self.statement.out(1))
+        for elseif in self.elseif_list:
+            res.append(elseif.out())
+        if self.else_single:
+            res.append(self.else_single.out())
         return "".join(res)
 
 def main():
@@ -616,12 +684,12 @@ def main():
 // slash_comment
 statement;
 
-class a { statement; }
-final class b { var $f; var $f = 5; var $f=array("foobar"=>array(5,5),"barbaz"=>array(3,3)); statement; }
-abstract class c { const a = 4, b = "das ist ein string"; statement; }
-class d extends a { statement; statement; }
-class e implements i { statement; }
-class f extends a implements i { statement; }
+class a { var $statement; }
+final class b { var $f; var $f = 5; var $f=array("foobar"=>array(5,5),"barbaz"=>array(3,3)); }
+abstract class c { const a = 4, b = "das ist ein string"; }
+class d extends a { var $a; }
+class e implements i { var $a; }
+class f extends a implements i { var $a; }
 class ftest {
     function f() {}
     private function complicatedName($model = array('RecController', 'UsersController'), $flash = 1, $dontUseMe, $pi_TI_link_PiVarsUR_l) {}
@@ -631,6 +699,7 @@ function f1() {statement;}
 function f2() // typo3 style comment
 {
     statement;
+    if (5) { statement; };
 }
 
 
