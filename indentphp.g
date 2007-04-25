@@ -29,7 +29,7 @@ parser Php:
     token IDENTIFIER:       "[a-zA-Z_][a-zA-Z_0-9]*"
     token CONSTANT_DQ_STRING: "\"([^$\"\\\\]|(\\\\.))*\""
     token CONSTANT_SQ_STRING: "\'([^$\'\\\\]|(\\\\.))*\'"
-    token CHAR:             "."
+    token CHAR:             "[\x00-\xff]"
 
     rule file:                              {{ result = PHPFile() }}
                             ( html          {{ result.addPart(html) }}
@@ -46,6 +46,8 @@ parser Php:
                             ( whitespace    {{ result.addPart(whitespace) }}
                             | slash_comment {{ result.addPart(slash_comment) }}
                             | hash_comment  {{ result.addPart(hash_comment) }}
+                            | multiline_comment
+                                            {{ result.addPart(multiline_comment) }}
                             | statement     {{ result.addPart(statement) }}
                             | function_declaration_statement
                                             {{ result.addPart(function_declaration_statement) }}
@@ -58,7 +60,14 @@ parser Php:
                             ( whitespace
                             | slash_comment {{ result.addPart(slash_comment) }}
                             | hash_comment  {{ result.addPart(hash_comment) }}
+                            | multiline_comment
+                                            {{ result.addPart(multiline_comment) }}
                             )*              {{ return result }}
+
+    rule multiline_comment: "/\\*"            {{ result = [] }}
+                            ( CHAR          {{ result.append(CHAR) }}
+                            )* "\\*/" opt_whitespace
+                                            {{ return MultilineComment("".join(result)) }}
 
     rule slash_comment:     "//" comment_to_eol
                                             {{ return SlashComment(comment_to_eol) }}
@@ -179,8 +188,10 @@ parser Php:
                                             {{ return ClassDeclaration(abstract, final, name, extends, implements, statements) }}
 
     rule class_statement_list:              {{ result = [] }}
-                            ( class_statement opt_whitespace
+                            ( ( class_statement opt_whitespace
                                             {{ result.append(class_statement) }}
+                              | opt_comment {{ result.append(opt_comment) }}
+                              )
                             )*              {{ return result }}
 
     rule class_statement:   ( 
@@ -272,7 +283,12 @@ parser Php:
                               statement
                               elseif_list
                               else_single   {{ return IfStatement(expression, statement, elseif_list, else_single) }}
-                            | ";"           {{ return EmptyStatement() }}
+                            | ";" opt_whitespace
+                                            {{ return EmptyStatement() }}
+                            | "return" opt_whitespace ";" opt_whitespace
+                                            {{ return ReturnStatement() }}
+                            | expression ";" opt_whitespace
+                                            {{ return Expression(expression) }}
                             )
 
     rule elseif_list:                       {{ result = [] }}
@@ -283,11 +299,39 @@ parser Php:
                               statement     {{ result.append(ElseifStatement(expression, statement)) }}
                             )*              {{ return result }}
 
-    rule else_single:       [ "else" statement
+    rule else_single:       [ "else" opt_whitespace statement
                                             {{ return ElseStatement(statement) }}
                             ]
 
-    rule expression:        NUMBER          {{ return Expression(NUMBER) }}
+    rule expression:        ( NUMBER        {{ return Expression(NUMBER) }}
+                            | expr_without_var
+                                            {{ return Expression(expr_without_var) }}
+                            )
+    
+    rule expr_without_var:  ( "empty" opt_whitespace "\\(" opt_whitespace variable "\\)" opt_whitespace
+                                            {{ return FunctionCall("empty", [variable]) }}
+                            | variable opt_whitespace "=" opt_whitespace expression
+                                            {{ return AssignmentExpression(variable, expression) }}
+                            )
+
+    rule variable:          ( base_variable_with_function_calls
+                                            {{ return base_variable_with_function_calls }}
+                              # or $foo->... }}
+                            )
+    
+    rule base_variable_with_function_calls:
+                            ( base_variable {{ return base_variable }}
+                            )
+
+    rule base_variable:     reference_variable
+                                            {{ return reference_variable }}
+
+    rule reference_variable:
+                            compound_variable
+                                            {{ return compound_variable }}
+
+    rule compound_variable: "\\$" IDENTIFIER
+                                            {{ return Variable(IDENTIFIER) }}
 
     rule comment_to_eol:                    {{ result = [] }}
                             (
@@ -389,6 +433,13 @@ class HashComment:
 
     def out(self, indent):
         return "# %s\n" % self.text.strip()
+
+class MultilineComment:
+    def __init__(self, text):
+        self.text = text
+
+    def out(self, indent):
+        return "/*%s*/\n" % self.text
 
 class ParameterList:
     def __init__(self):
@@ -680,49 +731,41 @@ class EmptyStatement:
     def out(self, indent):
         return ";\n"
 
+class Variable:
+    def __init__(self, name):
+        self.name = name
+
+    def out(self, indent):
+        return self.name
+
+class FunctionCall:
+    def __init__(self, name, arguments):
+        self.name = name
+        self.arguments = arguments
+
+    def out(self, indent, offset):
+        res = ["%s(" % self.name]
+        argout = []
+        for arg in self.arguments:
+            argout.append(arg.out(indent, offset))
+        res.extend(argout)
+        res.append(")")
+        return "".join(res)
+
+class ReturnStatement:
+    def out(self, indent):
+        return "return;"
+
+class AssignmentStatement:
+    def __init__(self, variable, expression):
+        self.variable = variable
+        self.expression = expression
+    
+    def out(self, indent):
+        return "%s = %s" % (self.variable.out(indent), self.expression.out(indent))
+
 def main():
-    #parse('main', file('Postgres.php').read())
-    ast = parse('file', """<html><head><title><?php
-# hash_comment
-// slash_comment
-;
-
-class a { var $statement; }
-final class b { var $f; var $f = 5; var $f=array("foobar"=>array(5,5),"barbaz"=>array(3,3)); }
-abstract class c { const a = 4, b = "das ist ein string"; }
-class d extends a { var $a; }
-class e implements i { var $a; }
-class f extends a implements i { var $a; }
-class ftest {
-    function f() {}
-    private function complicatedName($model = array('RecController', 'UsersController'), $flash = 1, $dontUseMe, $pi_TI_link_PiVarsUR_l) {}
-}
-
-function f1() {;}
-function f2() // typo3 style comment
-{
-    ;
-    if (5) { ; };
-}
-
-
-
-
-function f3($param) {;}
-function f4($p1, $p1 = "foobar", $p2 = 5, $p3 = 5,
-            $p4 = 5e10, $p6 = 'biae\\'feio',
-            $p7 = "ieo\\"ieo", $p8 = __LINE__,
-            $p9 = __FILE__, $p10 = __CLASS__,
-            $p11 = __METHOD__, $p12 = __FUNCTION__,
-            $p13 = CONSTANT, $p14 = Class::class_constant,
-            $p15 = +4, $p16 = -4, $p17 = array("a", "b" => "c"),
-            $p18 = array(), $p19 = array(4,5,))
-{ ; }
-    ?></title></head></html>
-""")
-
-    if not ast:
-        return
+    ast = parse('file', file(sys.argv[1]).read())
     sys.stdout.write(ast.out(0))
 
 if __name__ == '__main__':
