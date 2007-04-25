@@ -272,7 +272,7 @@ parser Php:
                               statement
                               elseif_list
                               else_single   {{ return IfStatement(expression, statement, elseif_list, else_single) }}
-                            | "statement;"  {{ return "statement;" }}
+                            | ";"           {{ return EmptyStatement() }}
                             )
 
     rule elseif_list:                       {{ result = [] }}
@@ -320,10 +320,10 @@ class PHPFile:
     def addPart(self, part):
         self.parts.append(part)
 
-    def out(self):
+    def out(self, indent):
         res = []
         for part in self.parts:
-            res.append(part.out())
+            res.append(part.out(indent))
         return "".join(res)
 
 class HTML:
@@ -333,7 +333,7 @@ class HTML:
     def addPart(self, part):
         self.parts.append(part)
 
-    def out(self):
+    def out(self, indent):
         res = []
         for part in self.parts:
             res.append(part)
@@ -346,10 +346,10 @@ class Script:
     def addPart(self, part):
         self.parts.append(part)
 
-    def out(self):
+    def out(self, indent):
         res = ['<?php\n']
         for part in self.parts:
-            res.append(part.out())
+            res.append(part.out(indent))
         res.append('\n?>')
         return "".join(res)
 
@@ -360,7 +360,7 @@ class Whitespace:
     def addPart(self, part):
         self.parts.append(part)
 
-    def out(self):
+    def out(self, indent):
         return ""
 
 class CommentList:
@@ -370,24 +370,24 @@ class CommentList:
     def addPart(self, part):
         self.parts.append(part)
 
-    def out(self):
+    def out(self, indent):
         res = ["\n"]
         for part in self.parts:
-            res.append(part.out())
+            res.append(part.out(indent))
         return "".join(res)
 
 class SlashComment:
     def __init__(self, text):
         self.text = text
 
-    def out(self):
+    def out(self, indent):
         return "// %s\n" % self.text.strip()
 
 class HashComment:
     def __init__(self, text):
         self.text = text
 
-    def out(self):
+    def out(self, indent):
         return "# %s\n" % self.text.strip()
 
 class ParameterList:
@@ -397,10 +397,10 @@ class ParameterList:
     def addParam(self, param):
         self.params.append(param)
 
-    def out(self, indent):
+    def out(self, indent, offset):
         if len(self.params) == 0:
             return ""
-        pos = indent
+        pos = indent * len(strIndent) + offset
         res = []
         for i, param in enumerate(self.params):
             # new line if line length would be > lineLength and this is not the first parameter
@@ -409,14 +409,14 @@ class ParameterList:
                 # space, param, comma (if not last param), ")" if last param
                 space = 1
                 comma_or_closing_paren = 1
-                if pos + space + len(param.out()) + comma_or_closing_paren > lineLength:
-                    res.append("\n%s" % (" " * indent))
-                    pos = indent
+                if pos + space + len(param.out(indent)) + comma_or_closing_paren > lineLength:
+                    res.append("\n%s" % (strIndent * indent))
+                    pos = indent * len(strIndent) + offset
                 else:
                     res.append(" ")
                     pos += 1
-            res.append(param.out())
-            pos += len(param.out())
+            res.append(param.out(indent))
+            pos += len(param.out(indent))
             if i < len(self.params) - 1:
                 res.append(',')
                 pos += 1
@@ -427,11 +427,11 @@ class Parameter:
         self.name = name
         self.default_value = default_value
 
-    def out(self):
+    def out(self, indent):
         res = ["$%s" % self.name]
         if self.default_value:
             res.append(" = ")
-            res.append(self.default_value.out())
+            res.append(self.default_value.out(indent, len(res[0]) + len(" = ")))
         return "".join(res)
 
 class Constant:
@@ -442,7 +442,7 @@ class Constant:
     def neg(self):
         self.negated = not self.negated
 
-    def out(self):
+    def out(self, indent, offset):
         res = []
         if self.negated:
             res.append('-')
@@ -458,7 +458,7 @@ class ClassConstant:
     def neg(self):
         self.negated = not self.negated
 
-    def out(self):
+    def out(self, indent, offset):
         res = []
         if self.negated:
             res.append('-')
@@ -469,7 +469,7 @@ class StaticString:
     def __init__(self, expr):
         self.expr = expr
 
-    def out(self):
+    def out(self, indent, offset):
         return self.expr
 
 class StaticNumber:
@@ -480,7 +480,7 @@ class StaticNumber:
     def neg(self):
         self.negated = not self.negated
 
-    def out(self):
+    def out(self, indent, offset):
         res = []
         if self.negated:
             res.append('-')
@@ -488,33 +488,33 @@ class StaticNumber:
         return "".join(res)
 
 class CurrentLine:
-    def out(self):
+    def out(self, indent, offset):
         return '__LINE__';
 
 class CurrentFile:
-    def out(self):
+    def out(self, indent, offset):
         return '__FILE__';
 
 class CurrentClass:
-    def out(self):
+    def out(self, indent, offset):
         return '__CLASS__';
 
 class CurrentMethod:
-    def out(self):
+    def out(self, indent, offset):
         return '__METHOD__';
 
 class CurrentFunction:
-    def out(self):
+    def out(self, indent, offset):
         return '__FUNCTION__';
 
 class StaticArray:
     def __init__(self, elements = []):
         self.elements = elements
 
-    def out(self):
+    def out(self, indent, offset):
         res = []
         for element in self.elements:
-            res.append(element.out())
+            res.append(element.out(indent, len("array(")))
         return "array(%s)" % ", ".join(res)
 
 class StaticArrayElement:
@@ -522,16 +522,12 @@ class StaticArrayElement:
         self.key = key
         self.value = value
 
-    def out(self):
-        res = [self.key.out()]
+    def out(self, indent, offset):
+        res = [self.key.out(indent, offset)]
         if self.value:
             res.append(' => ')
-            res.append(self.value.out())
+            res.append(self.value.out(indent, len(res[0]) + len(" => ") + offset))
         return "".join(res)
-
-class Statement:
-    def out(self):
-        return "statement;\n"
 
 class FunctionDeclaration:
     def __init__(self, name, is_reference, params, comments, body):
@@ -541,16 +537,17 @@ class FunctionDeclaration:
         self.comments = comments
         self.body = body
 
-    def out(self):
-        res = [self.comments.out()]
+    def out(self, indent):
+        res = [self.comments.out(indent)]
         ref = ''
         if self.is_reference:
             ref = "&"
         fun = 'function %s%s(' % (ref, self.name)
         res.append(fun)
-        res.append(self.params.out(len(fun)))
-        res.append(')\n{\n%s' % strIndent)
-        res.append(self.body.out())
+        res.append(self.params.out(indent, len(fun)))
+        res.append(')\n%s{\n%s' % (strIndent * indent, strIndent * (indent + 1)))
+        for statement in self.body:
+            res.append(statement.out(indent + 1))
         res.append('}\n')
         return "".join(res)
 
@@ -563,19 +560,19 @@ class ClassDeclaration:
         self.implements = implements
         self.statements = statements
 
-    def out(self):
+    def out(self, indent):
         res = ['\n']
         if self.abstract:
             res.append('abstract ')
         if self.final:
             res.append('final ')
-        res.append('class %s' % self.name)
+        res.append('%sclass %s' % (strIndent * indent, self.name))
         if self.extends:
             res.append(' extends %s' % self.extends)
-        res.append('\n{\n')
+        res.append('\n%s{\n' % strIndent * indent)
         for statement in self.statements:
-            res.append('    %s' % statement.out())
-        res.append('}\n')
+            res.append('%s' % statement.out(indent + 1))
+        res.append('%s}\n' % strIndent * indent)
         return "".join(res)
 
 class ClassVariableList:
@@ -583,12 +580,12 @@ class ClassVariableList:
         self.modifiers = modifiers
         self.vars = vars
 
-    def out(self):
+    def out(self, indent):
         res = []
         res.append(" ".join(self.modifiers))
         varsout = []
         for var in self.vars:
-            varsout.append(var.out())
+            varsout.append(var.out(indent))
         res.append("%s;\n" % " ".join(varsout))
         return "".join(res)
 
@@ -597,20 +594,20 @@ class ClassVariable:
         self.name = name
         self.value = value
 
-    def out(self):
+    def out(self, indent):
         res = ["$%s" % self.name]
         if self.value:
-            res.append(" = %s" % self.value.out())
+            res.append(" = %s" % self.value.out(indent, len(res[0]) + len(" = ")))
         return "".join(res)
 
 class ClassConstantDeclList:
     def __init__(self, constants):
         self.constants = constants
 
-    def out(self):
+    def out(self, indent):
         constout = []
         for constant in self.constants:
-            constout.append(constant.out())
+            constout.append(constant.out(indent, len("const ")))
         return "const %s;\n" % ", ".join(constout)
 
 class ClassConstantDeclaration:
@@ -618,8 +615,8 @@ class ClassConstantDeclaration:
         self.name = name
         self.value = value
 
-    def out(self):
-        return "%s = %s" % (self.name, self.value.out())
+    def out(self, indent, offset):
+        return "%s = %s" % (self.name, self.value.out(indent, offset + len(self.name) + len(" = ")))
 
 class MethodDeclaration:
     def __init__(self, modifiers, name, is_reference, params, comment, body):
@@ -630,7 +627,7 @@ class MethodDeclaration:
         self.comment = comment
         self.body = body
 
-    def out(self):
+    def out(self, indent):
         res = []
         for modifier in self.modifiers:
             res.append("%s " % modifier)
@@ -638,25 +635,26 @@ class MethodDeclaration:
         if self.is_reference:
             res.append("&")
         res.append("%s(" % self.name)
-        res.append(self.params.out(len("".join(res)) + len(strIndent)))
-        res.append(")\n%s{\n%s}\n" % (strIndent, strIndent))
+        res.append(self.params.out(indent, len("".join(res))))
+        res.append(")\n%s{\n%s}\n" % (strIndent * indent, strIndent * indent))
+        res.insert(0, strIndent * indent)
         return "".join(res)
 
 class Expression:
     def __init__(self, expr):
         self.expr = expr;
 
-    def out(self):
-        return self.expr
+    def out(self, indent):
+        return "%s%s" % (strIndent * indent, self.expr)
 
 class BlockStatement:
     def __init__(self, statement_list):
         self.statement_list = statement_list
 
-    def out(self):
-        res = []
-        for statement in statement_list:
-            res.append(statement.out())
+    def out(self, indent):
+        res = ["%s{\n" % strIndent * indent]
+        for statement in self.statement_list:
+            res.append(statement.out(indent + 1))
         return "".join(res)
 
 class IfStatement:
@@ -666,23 +664,28 @@ class IfStatement:
         self.elseif_list = elseif_list
         self.else_single = else_single
 
-    def out(self):
+    def out(self, indent):
         res = ["if ("]
-        res.append(self.condition.out())
+        res.append(self.condition.out(indent))
         res.append(")\n")
-        res.append(self.statement.out(1))
+        res.append(self.statement.out(indent))
         for elseif in self.elseif_list:
-            res.append(elseif.out())
+            res.append(elseif.out(indent))
         if self.else_single:
-            res.append(self.else_single.out())
+            res.append(self.else_single.out(indent))
+        res.insert(0, strIndent * indent)
         return "".join(res)
+
+class EmptyStatement:
+    def out(self, indent):
+        return ";\n"
 
 def main():
     #parse('main', file('Postgres.php').read())
     ast = parse('file', """<html><head><title><?php
 # hash_comment
 // slash_comment
-statement;
+;
 
 class a { var $statement; }
 final class b { var $f; var $f = 5; var $f=array("foobar"=>array(5,5),"barbaz"=>array(3,3)); }
@@ -695,17 +698,17 @@ class ftest {
     private function complicatedName($model = array('RecController', 'UsersController'), $flash = 1, $dontUseMe, $pi_TI_link_PiVarsUR_l) {}
 }
 
-function f1() {statement;}
+function f1() {;}
 function f2() // typo3 style comment
 {
-    statement;
-    if (5) { statement; };
+    ;
+    if (5) { ; };
 }
 
 
 
 
-function f3($param) {statement;}
+function f3($param) {;}
 function f4($p1, $p1 = "foobar", $p2 = 5, $p3 = 5,
             $p4 = 5e10, $p6 = 'biae\\'feio',
             $p7 = "ieo\\"ieo", $p8 = __LINE__,
@@ -714,13 +717,13 @@ function f4($p1, $p1 = "foobar", $p2 = 5, $p3 = 5,
             $p13 = CONSTANT, $p14 = Class::class_constant,
             $p15 = +4, $p16 = -4, $p17 = array("a", "b" => "c"),
             $p18 = array(), $p19 = array(4,5,))
-{ statement; }
+{ ; }
     ?></title></head></html>
 """)
 
     if not ast:
         return
-    sys.stdout.write(ast.out())
+    sys.stdout.write(ast.out(0))
 
 if __name__ == '__main__':
     main()
