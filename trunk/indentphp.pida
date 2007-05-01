@@ -8,7 +8,7 @@ name = indentphp
 # browse_directory
 # Select a source directory for the project
 # default value = /
-browse_directory = /home/markus/src/ply-2.3/example/GardenSnake
+browse_directory = /home/markus/src/indentphp
 
 
 [source]

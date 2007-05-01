@@ -22,7 +22,7 @@ strIndent = '    '
 
 # tokenizer
 
-from ply import lex
+from ply import lex, yacc
 from ply.lex import TOKEN
 
 states = (
@@ -30,22 +30,17 @@ states = (
 )
 
 tokens = (
-    'HTML',
     'SCRIPTSTART',
     'SCRIPTEND',
     'PHP',
+    'HTMLCHAR'
 )
 
 @TOKEN(r'<\?php')
 def t_SCRIPTSTART(t):
     t.lexer.php_start = t.lexer.lexpos
-    try:
-        t.value = t.lexer.lexdata[t.lexer.php_end:t.lexer.lexpos - len('<?php')]
-    except AttributeError:
-        t.value = t.lexer.lexdata[0:t.lexer.lexpos - len('<?php')]
-    t.type = 'HTML'
     t.lexer.begin('php')
-    return t
+    t.lexer.skip(len('<?php'))
 
 @TOKEN(r'\?>')
 def t_php_SCRIPTEND(t):
@@ -55,22 +50,91 @@ def t_php_SCRIPTEND(t):
     t.lexer.begin('INITIAL')
     return t
 
+@TOKEN(r'.')
+def t_HTMLCHAR(t):
+    return t
+
 def t_error(t):
     t.lexer.skip(1)
 
 def t_php_error(t):
+    # skip php contents for now; we capture it in t_php_SCRIPTEND
     t.lexer.skip(1)
 
 lex.lex(debug=1)
+
+# parser
+
+import types
+
+start = 'file'
+
+def p_file_1(p):
+    """file : file html
+    """
+    p[0] = p[1].append(p[2])
+
+def p_file_2(p):
+    """file : file PHP
+    """
+    p[0] = p[1].append(p[2])
+
+def p_file_3(p):
+    """file : html
+    """
+    p[0] = HTML(p[1])
+
+def p_file_4(p):
+    """file : PHP
+    """
+    p[0] = Script(p[1])
+
+def p_file_5(p):
+    """file :
+    """
+    p[0] = p[0]
+
+def p_html_1(p):
+    """html : html HTMLCHAR
+    """
+    if p[1] is None:
+        p[0] = p[2]
+    else:
+        if isinstance(p[1], types.StringType):
+            p[0] = p[1] + p[2]
+        else:
+            p[0] = p[1].append(p[2])
+
+def p_html_2(p):
+    """html : HTMLCHAR
+    """
+    p[0] = HTML(p[1])
+
+def p_error(p):
+    print "Syntax error"
+
+yacc.yacc()
+
+# ast classes
+
+class Script:
+    pass
+
+class HTML:
+    def __init__(self, s):
+        self.s = s
+        print "am %s" % self.s
+
+    def append(self, char):
+        self.s += char
+        print "am now %s" % self.s
 
 # main
 
 import sys
 
-lex.input(file(sys.argv[1]).read())
+def main():
+    print yacc.parse(file(sys.argv[1]).read())
 
-while 1:
-    tok = lex.token()
-    if not tok:
-        break
-    print tok
+if __name__ == '__main__':
+    main()
