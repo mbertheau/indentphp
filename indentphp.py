@@ -24,6 +24,7 @@ strIndent = '    '
 
 from ply import lex, yacc
 from ply.lex import TOKEN
+import re
 
 states = (
     ('php','exclusive'),
@@ -61,7 +62,7 @@ def t_php_error(t):
     # skip php contents for now; we capture it in t_php_SCRIPTEND
     t.lexer.skip(1)
 
-lex.lex(debug=1)
+lex.lex(debug=0, reflags=re.S)
 
 # parser
 
@@ -72,27 +73,27 @@ start = 'file'
 def p_file_1(p):
     """file : file html
     """
-    p[0] = p[1].append(p[2])
+    p[0] = File(HTML(p[2]), p[1])
 
 def p_file_2(p):
     """file : file PHP
     """
-    p[0] = p[1].append(p[2])
+    p[0] = File(Script(p[2]), p[1])
 
 def p_file_3(p):
     """file : html
     """
-    p[0] = HTML(p[1])
+    p[0] = File(HTML(p[1]))
 
 def p_file_4(p):
     """file : PHP
     """
-    p[0] = Script(p[1])
+    p[0] = File(Script(p[1]))
 
 def p_file_5(p):
     """file :
     """
-    p[0] = p[0]
+    p[0] = File()
 
 def p_html_1(p):
     """html : html HTMLCHAR
@@ -100,41 +101,62 @@ def p_html_1(p):
     if p[1] is None:
         p[0] = p[2]
     else:
-        if isinstance(p[1], types.StringType):
-            p[0] = p[1] + p[2]
-        else:
-            p[0] = p[1].append(p[2])
+        p[0] = p[1] + p[2]
 
 def p_html_2(p):
     """html : HTMLCHAR
     """
-    p[0] = HTML(p[1])
+    p[0] = p[1]
 
 def p_error(p):
     print "Syntax error"
 
-yacc.yacc()
+yacc.yacc(debug=1)
 
 # ast classes
 
+class File:
+    def __init__(self, part = None, oldfile = None):
+        self.parts = []
+        if oldfile is not None:
+            self.parts = oldfile.parts
+        if part is not None:
+            self.parts.append(part)
+
+    def out(self):
+        res = []
+        for part in self.parts:
+            res.append(part.out())
+        return "".join(res)
+
 class Script:
-    pass
+    def __init__(self, script):
+        self.script = script
+
+    def out(self):
+        return "<?php\n%s\n?>" % self.script
 
 class HTML:
     def __init__(self, s):
         self.s = s
-        print "am %s" % self.s
 
-    def append(self, char):
-        self.s += char
-        print "am now %s" % self.s
+    def out(self):
+        return self.s
 
 # main
 
 import sys
 
+def indentstring(s):
+    return yacc.parse(s).out()
+
+def indentfile(infilename, outfilename):
+    outf = file(outfilename, 'w')
+    outf.write(indentstring(open(infilename).read()))
+    outf.close()
+
 def main():
-    print yacc.parse(file(sys.argv[1]).read())
+    sys.stdout.write(indentstring(open(sys.argv[1]).read()))
 
 if __name__ == '__main__':
     main()

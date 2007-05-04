@@ -3,8 +3,7 @@ indentphp is released under the GNU General Public License Version 2
 
 = Usage =
 
-yapps indentphp.g
-python ./indentphp.py
+python ./indentphp.py infile.php
 
-At the moment you have to change the PHP code in indentphp.g to make it indent
+At the moment you have to change the code in indentphp.py to make it indent
 something other than what is in there now.
