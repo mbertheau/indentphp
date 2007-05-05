@@ -172,7 +172,9 @@ def indentstring(s):
 
 def indentfile(infilename, outfilename):
     outf = file(outfilename, 'w')
-    outf.write(indentstring(open(infilename).read()))
+    instring = open(infilename).read()
+    if len(instring) != 0:
+        outf.write(indentstring(instring))
     outf.close()
 
 def main():
