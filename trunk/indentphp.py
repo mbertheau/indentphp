@@ -57,7 +57,23 @@ tokens = (
     'LBRACE',
     'RBRACE',
     'AMPERSAND',
-    'SEMICOLON'
+    'SEMICOLON',
+    'COMMA',
+    'ASSIGN',
+    'ARRAY',
+    'VARIABLE',
+    'NUMBER',
+    'CONSTANT_DQ_STRING',
+    'CONSTANT_SQ_STRING',
+    'CURRENT_LINE',
+    'CURRENT_FILE',
+    'CURRENT_CLASS',
+    'CURRENT_METHOD',
+    'CURRENT_FUNCTION',
+    'PLUS',
+    'MINUS',
+    'COLON',
+    'DOUBLE_ARROW'
 )
 
 @TOKEN(r'<\?php')
@@ -75,8 +91,18 @@ def t_php_SCRIPTEND(t):
     t.lexer.begin('INITIAL')
     return t
 
+@TOKEN(r'((0x[0-9a-fA-F]+)|((([0-9]*\.[0-9]+)|([0-9]+\.[0-9]*)|([0-9]+))([eE][-+]?[0-9]+)?))')
+def t_php_NUMBER(t):
+    return t
+
 reserved = {
-    'function' : 'FUNCTION'
+    'function'      : 'FUNCTION',
+    'array'         : 'ARRAY',
+    '__LINE__'      : 'CURRENT_LINE',
+    '__FILE__'      : 'CURRENT_FILE',
+    '__CLASS__'     : 'CURRENT_CLASS',
+    '__METHOD__'    : 'CURRENT_METHOD',
+    '__FUNCTION__'  : 'CURRENT_FUNCTION'
 }
 
 @TOKEN(r'[a-zA-Z_][a-zA-Z_0-9]*')
@@ -95,8 +121,17 @@ t_php_LPAREN = r'\('
 t_php_RPAREN = r'\)'
 t_php_AMPERSAND = r'&'
 t_php_SEMICOLON = r';'
+t_php_COMMA = r','
+t_php_ASSIGN = r'='
+t_php_DOUBLE_ARROW = r'=>'
+t_php_PLUS = r'\+'
+t_php_MINUS = r'-'
+t_php_COLON = r'::'
 t_php_SPACE = r'\ '
 t_php_TAB = r'\t'
+t_php_VARIABLE = r'\$[a-zA-Z_][a-zA-Z_0-9]*'
+t_php_CONSTANT_DQ_STRING = r'"([^$"\\]|(\\.))*"'
+t_php_CONSTANT_SQ_STRING = r'\'([^$\'\\]|(\\.))*\''
 t_HTMLCHAR = r'.'
 
 def t_error(t):
@@ -194,15 +229,122 @@ def p_statement(p):
     p[0] = EmptyStatement()
 
 def p_function_declaration_statement(p):
-    """function_declaration_statement : FUNCTION whitespace is_reference opt_whitespace IDENTIFIER opt_whitespace LPAREN opt_whitespace RPAREN opt_whitespace LBRACE opt_whitespace statement_list RBRACE opt_whitespace
+    """function_declaration_statement : FUNCTION whitespace is_reference opt_whitespace IDENTIFIER opt_whitespace LPAREN opt_whitespace parameter_list RPAREN opt_whitespace LBRACE opt_whitespace statement_list RBRACE opt_whitespace
     """
-    p[0] = FunctionCall(p[5], p[3], [], p[13])
+    p[0] = FunctionCall(p[5], p[3], p[9], p[14])
 
 def p_is_reference(p):
     """is_reference :   AMPERSAND
                       |
     """
     p[0] = len(p) > 1
+
+def p_parameter_list(p):
+    """parameter_list :   non_empty_parameter_list
+                        |
+    """
+    if len(p) == 1:
+        p[0] = []
+    else:
+        p[0] = p[1]
+
+def p_non_empty_parameter_list(p):
+    """non_empty_parameter_list :   parameter
+                                  | non_empty_parameter_list COMMA opt_whitespace parameter
+    """
+    if len(p) > 2:
+        p[0] = p[1][:]
+        p[0].append(Parameter(p[4]))
+    else:
+        p[0] = [p[1]]
+
+def p_parameter(p):
+    """parameter :   opt_class_type is_reference VARIABLE opt_whitespace
+                   | opt_class_type is_reference VARIABLE opt_whitespace ASSIGN opt_whitespace static_scalar
+    """
+    if len(p) > 5:
+        p[0] = Parameter(p[3], p[2], p[1], p[7])
+    else:
+        p[0] = Parameter(p[3], p[2], p[1])
+
+def p_opt_class_type(p):
+    """opt_class_type :   IDENTIFIER opt_whitespace
+                        | ARRAY opt_whitespace
+                        |
+    """
+    if len(p) > 1:
+        p[0] = p[1]
+
+def p_static_scalar(p):
+    """static_scalar :   common_scalar
+                       | IDENTIFIER opt_whitespace
+                       | PLUS opt_whitespace static_scalar
+                       | MINUS opt_whitespace static_scalar
+                       | ARRAY opt_whitespace LPAREN opt_whitespace static_array_pair_list RPAREN opt_whitespace
+                       | static_class_constant
+    """
+    if len(p) == 2:
+        p[0] = p[1]
+    if len(p) == 3:
+        p[0] = Scalar(p[1])
+    if len(p) == 4:
+        p[0] = p[3]
+        if p[1] == '-':
+            p[0].neg()
+    if len(p) == 8:
+        p[0] = StaticArray(p[5])
+
+def p_common_scalar(p):
+    """common_scalar :   NUMBER opt_whitespace
+                       | CONSTANT_DQ_STRING opt_whitespace
+                       | CONSTANT_SQ_STRING opt_whitespace
+                       | CURRENT_LINE opt_whitespace
+                       | CURRENT_FILE opt_whitespace
+                       | CURRENT_CLASS opt_whitespace
+                       | CURRENT_METHOD opt_whitespace
+                       | CURRENT_FUNCTION opt_whitespace
+    """
+    p[0] = Scalar(p[1])
+
+def p_static_array_pair_list(p):
+    """static_array_pair_list :   non_empty_static_array_pair_list opt_comma
+                                | 
+    """
+    if len(p) > 1:
+        p[0] = p[1]
+    else:
+        p[0] = []
+
+def p_opt_comma(p):
+    """opt_comma :   COMMA opt_whitespace
+                   |
+    """
+    pass
+
+def p_non_empty_static_array_pair_list_1(p):
+    """non_empty_static_array_pair_list :   static_scalar
+                                          | static_scalar DOUBLE_ARROW opt_whitespace static_scalar
+    """
+    if len(p) == 2:
+        p[0] = [p[1]]
+    if len(p) == 5:
+        p[0] = [Pair(p[1], p[4])]
+
+def p_non_empty_static_array_pair_list_2(p):
+    """non_empty_static_array_pair_list :   non_empty_static_array_pair_list COMMA opt_whitespace static_scalar
+                                          | non_empty_static_array_pair_list COMMA opt_whitespace static_scalar DOUBLE_ARROW opt_whitespace static_scalar
+    """
+    if len(p) == 5:
+        p[0] = p[1]
+        p[0].append(p[2])
+    if len(p) == 8:
+        p[0] = p[1]
+        p[0].append(Pair(p[4], p[7]))
+
+def p_static_class_constant(p):
+    """static_class_constant : IDENTIFIER opt_whitespace COLON opt_whitespace IDENTIFIER opt_whitespace
+    """
+    p[0] = Scalar(p[1] + "::" + p[5])
 
 def p_whitespace(p):
     """whitespace :   whitespace TAB
@@ -312,6 +454,62 @@ class FunctionCall:
         res.append(config.indent())
         res.append('}\n')
         return ''.join(res)
+
+class Parameter:
+    def __init__(self, name, is_reference, class_type, value = None):
+        self.name = name
+        self.is_reference = is_reference
+        self.class_type = class_type
+        self.value = value
+
+    def out(self, config):
+        res = []
+        if self.class_type is not None:
+            res.append(self.class_type + " ")
+        if self.is_reference:
+            res.append('&')
+        res.append(self.name)
+        if self.value is not None:
+            res.append(" = ")
+            res.append(self.value.out(config))
+        return ''.join(res)
+
+class Scalar:
+    def __init__(self, value):
+        self.value = value
+        self.negated = False
+
+    def neg(self):
+        self.negated = not self.negated
+
+    def out(self, config):
+        res = self.value
+        if not isinstance(self.value, types.StringTypes):
+            res = self.value.out(config)
+        if self.negated:
+            return '-' + res
+        return res
+
+class StaticArray:
+    def __init__(self, element_list):
+        self.element_list = element_list
+
+    def out(self, config):
+        res = ['array(']
+        elements = []
+        for element in self.element_list:
+            elements.append(element.out(config))
+        res.append(', '.join(elements))
+        res.append(')')
+        return ''.join(res)
+
+class Pair:
+    def __init__(self, key, value):
+        self.key = key
+        self.value = value
+
+    def out(self, config):
+        return "%s => %s" % (self.key.out(config), self.value.out(config))
 
 # main
 
