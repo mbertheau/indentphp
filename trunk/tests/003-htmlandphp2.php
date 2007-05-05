@@ -1,8 +1,4 @@
-<?php
-echo "foo";
-?>
+<?php ;?>
 <link rel="nofollow"/>
-<?php
-echo "foo";
-?>
+<?php ;?>
 <link rel="nofollow"/>

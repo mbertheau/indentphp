@@ -1,2 +1,2 @@
 <html>
-<?php $b = 5; ?></html>
+<?php ;?></html>

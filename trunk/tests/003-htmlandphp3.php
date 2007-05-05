@@ -1,4 +1,4 @@
 <html><head>
-<title><?php echo $title ?></title>
+<title><?php ;?></title>
 <body>
-<?php if foobar: exit()
+<?php ;
