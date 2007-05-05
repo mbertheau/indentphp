@@ -32,8 +32,12 @@ states = (
 
 tokens = (
     'SCRIPTSTART',
+    'SCRIPTSHORTSTART',
     'SCRIPTEND',
     'PHP',
+    'NEWLINE',
+    'SPACE',
+    'TAB',
     'HTMLCHAR'
 )
 
@@ -42,13 +46,21 @@ def t_SCRIPTSTART(t):
     t.lexer.begin('php')
     return t
 
+@TOKEN(r'<\?')
+def t_SCRIPTSHORTSTART(t):
+    t.lexer.begin('php')
+    return t
+
 @TOKEN(r'\?>')
 def t_php_SCRIPTEND(t):
     t.lexer.begin('INITIAL')
     return t
 
+t_php_PHP = r';'
+t_php_SPACE = r'\ '
+t_php_TAB = r'\t'
+t_php_NEWLINE = r'(\n|\r|\r\n)'
 t_HTMLCHAR = r'.'
-t_php_PHP = r'\ ;\n?'
 
 def t_error(t):
     print "lexing error"
@@ -56,7 +68,7 @@ def t_error(t):
 def t_php_error(t):
     print "lexing error in php"
 
-lex.lex(debug=0, reflags=re.S)
+lexer = lex.lex(debug=0, reflags=re.S)
 
 # parser
 
@@ -96,20 +108,46 @@ def p_start1_4(p):
     p[0] = p[1][:]
     p[0].append(HTML(p[2]))
 
-def p_scriptwithoutend(p):
-    """scriptwithoutend : SCRIPTSTART php
+def p_scriptwithoutend_1(p):
+    """scriptwithoutend : SCRIPTSTART whitespace php
     """
-    p[0] = p[2]
+    p[0] = p[3]
 
-def p_script(p):
-    """script : SCRIPTSTART php SCRIPTEND
+def p_scriptwithoutend_2(p):
+    """scriptwithoutend : SCRIPTSHORTSTART opt_whitespace php
     """
-    p[0] = p[2]
+    p[0] = p[3]
+
+def p_script_1(p):
+    """script : SCRIPTSTART whitespace php SCRIPTEND
+    """
+    p[0] = p[3]
+
+def p_script_2(p):
+    """script : SCRIPTSHORTSTART opt_whitespace php SCRIPTEND
+    """
+    p[0] = p[3]
 
 def p_php(p):
-    """php : PHP
+    """php : PHP opt_whitespace
     """
     p[0] = Script(p[1])
+
+def p_whitespace(p):
+    """whitespace :   whitespace TAB
+                    | whitespace SPACE
+                    | whitespace NEWLINE
+                    | TAB
+                    | SPACE
+                    | NEWLINE
+    """
+    pass
+
+def p_opt_whitespace(p):
+    """opt_whitespace : 
+                        | whitespace
+    """
+    pass
 
 def p_html_1(p):
     """html : html HTMLCHAR
@@ -168,7 +206,10 @@ class HTML:
 import sys
 
 def indentstring(s):
-    return yacc.parse(s).out()
+    # sometimes we parse several files in one run
+    # so we use a throw-away clone of the initial lexer with a clean state
+    mylexer = lexer.clone()
+    return yacc.parse(s, lexer=mylexer).out()
 
 def indentfile(infilename, outfilename):
     outf = file(outfilename, 'w')
@@ -185,6 +226,8 @@ def main():
         fname = sys.argv[2]
 
     s = open(fname).read()
+    if len(s) == 0:
+        sys.exit(1)
 
     if onlytokens:
         lex.input(s)
