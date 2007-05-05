@@ -39,28 +39,22 @@ tokens = (
 
 @TOKEN(r'<\?php')
 def t_SCRIPTSTART(t):
-    t.lexer.php_start = t.lexer.lexpos
     t.lexer.begin('php')
-    t.lexer.skip(len('<?php'))
+    return t
 
 @TOKEN(r'\?>')
 def t_php_SCRIPTEND(t):
-    t.lexer.php_end = t.lexer.lexpos
-    t.value = t.lexer.lexdata[t.lexer.php_start:t.lexer.lexpos - len('?>')]
-    t.type = 'PHP'
     t.lexer.begin('INITIAL')
     return t
 
-@TOKEN(r'.')
-def t_HTMLCHAR(t):
-    return t
+t_HTMLCHAR = r'.'
+t_php_PHP = r'\ ;\n?'
 
 def t_error(t):
-    t.lexer.skip(1)
+    print "lexing error"
 
 def t_php_error(t):
-    # skip php contents for now; we capture it in t_php_SCRIPTEND
-    t.lexer.skip(1)
+    print "lexing error in php"
 
 lex.lex(debug=0, reflags=re.S)
 
@@ -71,29 +65,51 @@ import types
 start = 'file'
 
 def p_file_1(p):
-    """file : file html
+    """file : start1 scriptwithoutend
     """
-    p[0] = File(HTML(p[2]), p[1])
+    p[0] = File(p[1], p[2])
 
 def p_file_2(p):
-    """file : file PHP
+    """file : start1
     """
-    p[0] = File(Script(p[2]), p[1])
+    p[0] = File(p[1])
 
-def p_file_3(p):
-    """file : html
+def p_start1_1(p):
+    """start1 : script
     """
-    p[0] = File(HTML(p[1]))
+    p[0] = [p[1]]
 
-def p_file_4(p):
-    """file : PHP
+def p_start1_2(p):
+    """start1 : html
     """
-    p[0] = File(Script(p[1]))
+    p[0] = [HTML(p[1])]
 
-def p_file_5(p):
-    """file :
+def p_start1_3(p):
+    """start1 : start1 script
     """
-    p[0] = File()
+    p[0] = p[1][:]
+    p[0].append(p[2])
+
+def p_start1_4(p):
+    """start1 : start1 html
+    """
+    p[0] = p[1][:]
+    p[0].append(HTML(p[2]))
+
+def p_scriptwithoutend(p):
+    """scriptwithoutend : SCRIPTSTART php
+    """
+    p[0] = p[2]
+
+def p_script(p):
+    """script : SCRIPTSTART php SCRIPTEND
+    """
+    p[0] = p[2]
+
+def p_php(p):
+    """php : PHP
+    """
+    p[0] = Script(p[1])
 
 def p_html_1(p):
     """html : html HTMLCHAR
@@ -116,10 +132,8 @@ yacc.yacc(debug=1)
 # ast classes
 
 class File:
-    def __init__(self, part = None, oldfile = None):
-        self.parts = []
-        if oldfile is not None:
-            self.parts = oldfile.parts
+    def __init__(self, parts, part = None):
+        self.parts = parts
         if part is not None:
             self.parts.append(part)
 
@@ -127,11 +141,17 @@ class File:
         res = []
         for part in self.parts:
             res.append(part.out())
-        return "".join(res)
+        res = "".join(res)
+        if res[-1] != "\n":
+            res = res + "\n"
+        return res
 
 class Script:
     def __init__(self, script):
-        self.script = script
+        if script[-1] == '\n':
+            self.script = script[:-1]
+        else:
+            self.script = script
 
     def out(self):
         return "<?php\n%s\n?>" % self.script
@@ -156,7 +176,23 @@ def indentfile(infilename, outfilename):
     outf.close()
 
 def main():
-    sys.stdout.write(indentstring(open(sys.argv[1]).read()))
+    onlytokens = False
+    fname = sys.argv[1]
+    if sys.argv[1] == '--tokens':
+        onlytokens = True
+        fname = sys.argv[2]
+
+    s = open(fname).read()
+
+    if onlytokens:
+        lex.input(s)
+        while 1:
+            tok = lex.token()
+            if not tok:
+                break
+            print tok
+    else:
+        sys.stdout.write(indentstring(s))
 
 if __name__ == '__main__':
     main()
