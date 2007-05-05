@@ -18,7 +18,19 @@
 
 # configuration
 
-strIndent = '    '
+class Config:
+    def __init__(self):
+        self.strIndent = '    '
+        self.indentlevel = 0
+
+    def indent(self):
+        return self.strIndent * self.indentlevel
+
+    def incIndent(self):
+        self.indentlevel += 1
+
+    def decIndent(self):
+        self.indentlevel -= 1
 
 # tokenizer
 
@@ -34,11 +46,18 @@ tokens = (
     'SCRIPTSTART',
     'SCRIPTSHORTSTART',
     'SCRIPTEND',
-    'PHP',
     'NEWLINE',
     'SPACE',
     'TAB',
-    'HTMLCHAR'
+    'HTMLCHAR',
+    'FUNCTION',
+    'IDENTIFIER',
+    'LPAREN',
+    'RPAREN',
+    'LBRACE',
+    'RBRACE',
+    'AMPERSAND',
+    'SEMICOLON'
 )
 
 @TOKEN(r'<\?php')
@@ -56,17 +75,35 @@ def t_php_SCRIPTEND(t):
     t.lexer.begin('INITIAL')
     return t
 
-t_php_PHP = r';'
+reserved = {
+    'function' : 'FUNCTION'
+}
+
+@TOKEN(r'[a-zA-Z_][a-zA-Z_0-9]*')
+def t_php_IDENTIFIER(t):
+    t.type = reserved.get(t.value, 'IDENTIFIER')
+    return t
+
+@TOKEN(r'(\n|\r|\r\n)')
+def t_php_NEWLINE(t):
+    t.lexer.lineno += 1
+    return t
+
+t_php_RBRACE = r'}'
+t_php_LBRACE = r'{'
+t_php_LPAREN = r'\('
+t_php_RPAREN = r'\)'
+t_php_AMPERSAND = r'&'
+t_php_SEMICOLON = r';'
 t_php_SPACE = r'\ '
 t_php_TAB = r'\t'
-t_php_NEWLINE = r'(\n|\r|\r\n)'
 t_HTMLCHAR = r'.'
 
 def t_error(t):
-    print "lexing error"
+    print 'lexing error on line %d' % t.lexer.lineno
 
 def t_php_error(t):
-    print "lexing error in php"
+    print 'lexing error in php on line %d' % t.lexer.lineno
 
 lexer = lex.lex(debug=0, reflags=re.S)
 
@@ -129,9 +166,43 @@ def p_script_2(p):
     p[0] = p[3]
 
 def p_php(p):
-    """php : PHP opt_whitespace
+    """php : statement_list
     """
     p[0] = Script(p[1])
+
+def p_statement_list(p):
+    """statement_list :   statement_list top_statement
+                        |
+    """
+    if len(p) > 1:
+        p[0] = p[1][:]
+        p[0].append(p[2])
+    else:
+        p[0] = []
+
+def p_top_statement(p):
+    """top_statement :   statement
+                       | function_declaration_statement
+    """
+#                       | class_declaration_statement
+#                       | HALT_COMPILER opt_whitespace '(' opt_whitespace ')' opt_whitespace ';' opt_whitespace
+    p[0] = p[1]
+
+def p_statement(p):
+    """statement : SEMICOLON opt_whitespace
+    """
+    p[0] = EmptyStatement()
+
+def p_function_declaration_statement(p):
+    """function_declaration_statement : FUNCTION whitespace is_reference opt_whitespace IDENTIFIER opt_whitespace LPAREN opt_whitespace RPAREN opt_whitespace LBRACE opt_whitespace statement_list RBRACE opt_whitespace
+    """
+    p[0] = FunctionCall(p[5], p[3], [], p[13])
+
+def p_is_reference(p):
+    """is_reference :   AMPERSAND
+                      |
+    """
+    p[0] = len(p) > 1
 
 def p_whitespace(p):
     """whitespace :   whitespace TAB
@@ -163,7 +234,7 @@ def p_html_2(p):
     p[0] = p[1]
 
 def p_error(p):
-    print "Syntax error"
+    print 'Syntax error on line %d' % p.lexer.lineno
 
 yacc.yacc(debug=1)
 
@@ -175,31 +246,72 @@ class File:
         if part is not None:
             self.parts.append(part)
 
-    def out(self):
+    def out(self, config):
         res = []
         for part in self.parts:
-            res.append(part.out())
-        res = "".join(res)
-        if res[-1] != "\n":
-            res = res + "\n"
+            res.append(part.out(config))
+        res = ''.join(res)
+        if res[-1] != '\n':
+            res = res + '\n'
         return res
 
 class Script:
-    def __init__(self, script):
-        if script[-1] == '\n':
-            self.script = script[:-1]
-        else:
-            self.script = script
+    def __init__(self, statement_list):
+        self.statement_list = statement_list
 
-    def out(self):
-        return "<?php\n%s\n?>" % self.script
+    def out(self, config):
+        res = ['<?php\n']
+        for statement in self.statement_list:
+            res.append(statement.out(config))
+            res.append('\n')
+        res.append('?>')
+        return ''.join(res)
 
 class HTML:
     def __init__(self, s):
         self.s = s
 
-    def out(self):
+    def out(self, config):
         return self.s
+
+# statements
+
+class EmptyStatement:
+    def out(self, config):
+        return config.indent() + ';'
+
+class FunctionCall:
+    def __init__(self, name, is_reference = False, parameter_list = [], statement_list = []):
+        self.name = name
+        self.is_reference = is_reference
+        self.parameter_list = parameter_list
+        self.statement_list = statement_list
+
+    def out(self, config):
+        res = []
+        res.append(config.indent())
+        res.append('function ')
+        if self.is_reference:
+            res.append('&')
+        res.append(self.name)
+        res.append('(')
+        parameters = []
+        for parameter in self.parameter_list:
+            parameters.append(parameter.out(config))
+        res.append(', '.join(parameters))
+        res.append(')\n')
+        res.append(config.indent())
+        res.append('{\n')
+        config.incIndent()
+        statements = []
+        for statement in self.statement_list:
+            statements.append(statement.out(config))
+            statements.append('\n')
+        res.append(''.join(statements))
+        config.decIndent()
+        res.append(config.indent())
+        res.append('}\n')
+        return ''.join(res)
 
 # main
 
@@ -209,7 +321,12 @@ def indentstring(s):
     # sometimes we parse several files in one run
     # so we use a throw-away clone of the initial lexer with a clean state
     mylexer = lexer.clone()
-    return yacc.parse(s, lexer=mylexer).out()
+    myyacc = yacc.yacc()
+    res = myyacc.parse(s, lexer=mylexer, debug=1)
+    config = Config()
+    if res is not None:
+        return res.out(config)
+    return ''
 
 def indentfile(infilename, outfilename):
     outf = file(outfilename, 'w')
