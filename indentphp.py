@@ -193,13 +193,13 @@ def p_start1_2(p):
 def p_start1_3(p):
     """start1 : start1 script
     """
-    p[0] = p[1][:]
+    p[0] = p[1]
     p[0].append(p[2])
 
 def p_start1_4(p):
     """start1 : start1 html
     """
-    p[0] = p[1][:]
+    p[0] = p[1]
     p[0].append(HTML(p[2]))
 
 def p_scriptwithoutend_1(p):
@@ -232,7 +232,7 @@ def p_statement_list(p):
                         |
     """
     if len(p) > 1:
-        p[0] = p[1][:]
+        p[0] = p[1]
         p[0].append(p[2])
     else:
         p[0] = []
@@ -274,7 +274,7 @@ def p_non_empty_parameter_list(p):
                                   | non_empty_parameter_list COMMA opt_whitespace parameter
     """
     if len(p) > 2:
-        p[0] = p[1][:]
+        p[0] = p[1]
         p[0].append(Parameter(p[4]))
     else:
         p[0] = [p[1]]
@@ -333,7 +333,7 @@ def p_interface_list(p):
     if len(p) == 3:
         p[0] = [p[1]]
     else:
-        p[0] = p[1][:]
+        p[0] = p[1]
         p[0].append(p[4])
 
 def p_class_statement_list(p):
@@ -343,7 +343,7 @@ def p_class_statement_list(p):
     if len(p) == 1:
         p[0] = []
     else:
-        p[0] = p[1][:]
+        p[0] = p[1]
         p[0].append(p[2])
 
 def p_class_statement(p):
@@ -383,7 +383,7 @@ def p_non_empty_member_modifiers(p):
     if len(p) == 2:
         p[0] = [p[1]]
     else:
-        p[0] = p[1][:]
+        p[0] = p[1]
         p[0].append(p[2])
 
 def p_member_modifier(p):
@@ -400,7 +400,7 @@ def p_class_variable_declaration_1(p):
     """class_variable_declaration :   class_variable_declaration COMMA opt_whitespace VARIABLE opt_whitespace
                                     | class_variable_declaration COMMA opt_whitespace VARIABLE opt_whitespace ASSIGN opt_whitespace static_scalar
     """
-    p[0] = p[1][:]
+    p[0] = p[1]
     if len(p) == 6:
         p[0].append(ClassVariable(p[4]))
     else:
@@ -420,7 +420,7 @@ def p_class_constant_declaration(p):
                                     | CONST opt_whitespace IDENTIFIER opt_whitespace ASSIGN opt_whitespace static_scalar
     """
     if len(p) == 9:
-        p[0] = p[1][:]
+        p[0] = p[1]
         p[0].append(ClassConstant(p[4], p[8]))
     if len(p) == 8:
         p[0] = [ClassConstant(p[3], p[7])]
