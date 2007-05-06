@@ -73,7 +73,18 @@ tokens = (
     'PLUS',
     'MINUS',
     'COLON',
-    'DOUBLE_ARROW'
+    'DOUBLE_ARROW',
+    'CLASS',
+    'ABSTRACT',
+    'FINAL',
+    'EXTENDS',
+    'IMPLEMENTS',
+    'VAR',
+    'PUBLIC',
+    'PRIVATE',
+    'PROTECTED',
+    'STATIC',
+    'CONST'
 )
 
 @TOKEN(r'<\?php')
@@ -102,7 +113,18 @@ reserved = {
     '__FILE__'      : 'CURRENT_FILE',
     '__CLASS__'     : 'CURRENT_CLASS',
     '__METHOD__'    : 'CURRENT_METHOD',
-    '__FUNCTION__'  : 'CURRENT_FUNCTION'
+    '__FUNCTION__'  : 'CURRENT_FUNCTION',
+    'class'         : 'CLASS',
+    'abstract'      : 'ABSTRACT',
+    'final'         : 'FINAL',
+    'extends'       : 'EXTENDS',
+    'implements'    : 'IMPLEMENTS',
+    'var'           : 'VAR',
+    'public'        : 'PUBLIC',
+    'private'       : 'PRIVATE',
+    'protected'     : 'PROTECTED',
+    'static'        : 'STATIC',
+    'const'         : 'CONST'
 }
 
 @TOKEN(r'[a-zA-Z_][a-zA-Z_0-9]*')
@@ -218,9 +240,8 @@ def p_statement_list(p):
 def p_top_statement(p):
     """top_statement :   statement
                        | function_declaration_statement
+                       | class_declaration_statement
     """
-#                       | class_declaration_statement
-#                       | HALT_COMPILER opt_whitespace '(' opt_whitespace ')' opt_whitespace ';' opt_whitespace
     p[0] = p[1]
 
 def p_statement(p):
@@ -231,7 +252,7 @@ def p_statement(p):
 def p_function_declaration_statement(p):
     """function_declaration_statement : FUNCTION whitespace is_reference opt_whitespace IDENTIFIER opt_whitespace LPAREN opt_whitespace parameter_list RPAREN opt_whitespace LBRACE opt_whitespace statement_list RBRACE opt_whitespace
     """
-    p[0] = FunctionCall(p[5], p[3], p[9], p[14])
+    p[0] = FunctionDeclaration(p[5], p[3], p[9], p[14])
 
 def p_is_reference(p):
     """is_reference :   AMPERSAND
@@ -274,6 +295,142 @@ def p_opt_class_type(p):
     """
     if len(p) > 1:
         p[0] = p[1]
+
+def p_class_declaration_statement(p):
+    """class_declaration_statement :   class_entry_type IDENTIFIER opt_whitespace extends_from implements_list LBRACE opt_whitespace class_statement_list RBRACE opt_whitespace
+    """
+#                                     | interface_entry IDENTIFIER opt_whitespace interface_extends_list LBRACE opt_whitespace class_statement_list RBRACE opt_whitespace
+    p[0] = ClassDeclaration(p[2], p[1], p[4], p[5], p[8])
+
+def p_class_entry_type(p):
+    """class_entry_type :   CLASS opt_whitespace
+                          | ABSTRACT opt_whitespace CLASS opt_whitespace
+                          | FINAL opt_whitespace CLASS opt_whitespace
+    """
+    if len(p) > 3:
+        p[0] = p[1]
+
+def p_extends_from(p):
+    """extends_from :   EXTENDS opt_whitespace IDENTIFIER opt_whitespace
+                      |
+    """
+    if len(p) > 1:
+        p[0] = p[3]
+
+def p_implements_list(p):
+    """implements_list :   IMPLEMENTS opt_whitespace interface_list
+                         |
+    """
+    if len(p) > 1:
+        p[0] = p[3]
+    else:
+        p[0] = []
+
+def p_interface_list(p):
+    """interface_list : IDENTIFIER opt_whitespace
+                        | interface_list COMMA opt_whitespace IDENTIFIER opt_whitespace
+    """
+    if len(p) == 3:
+        p[0] = [p[1]]
+    else:
+        p[0] = p[1][:]
+        p[0].append(p[4])
+
+def p_class_statement_list(p):
+    """class_statement_list :   class_statement_list class_statement
+                              |
+    """
+    if len(p) == 1:
+        p[0] = []
+    else:
+        p[0] = p[1][:]
+        p[0].append(p[2])
+
+def p_class_statement(p):
+    """class_statement :   variable_modifiers class_variable_declaration SEMICOLON opt_whitespace
+                         | class_constant_declaration SEMICOLON opt_whitespace
+                         | method_modifiers FUNCTION opt_whitespace is_reference IDENTIFIER opt_whitespace LPAREN opt_whitespace parameter_list RPAREN opt_whitespace method_body
+    """
+    if len(p) == 5:
+        p[0] = ClassVariableList(p[1], p[2])
+    if len(p) == 4:
+        p[0] = ClassConstantsList(p[1])
+    if len(p) == 13:
+        p[0] = MethodDeclaration(p[5], p[1], p[4], p[9], p[12])
+
+def p_variable_modifiers_1(p):
+    """variable_modifiers : non_empty_member_modifiers
+    """
+    p[0] = p[1]
+
+def p_variable_modifiers_2(p):
+    """variable_modifiers : VAR opt_whitespace
+    """
+    p[0] = [p[1]]
+
+def p_method_modifiers(p):
+    """method_modifiers :   non_empty_member_modifiers
+                          |
+    """
+    p[0] = []
+    if len(p) > 1:
+        p[0] = p[1]
+
+def p_non_empty_member_modifiers(p):
+    """non_empty_member_modifiers :   member_modifier
+                                    | non_empty_member_modifiers member_modifier
+    """
+    if len(p) == 2:
+        p[0] = [p[1]]
+    else:
+        p[0] = p[1][:]
+        p[0].append(p[2])
+
+def p_member_modifier(p):
+    """member_modifier :   PUBLIC opt_whitespace
+                         | PROTECTED opt_whitespace
+                         | PRIVATE opt_whitespace
+                         | STATIC opt_whitespace
+                         | ABSTRACT opt_whitespace
+                         | FINAL opt_whitespace
+    """
+    p[0] = p[1]
+
+def p_class_variable_declaration_1(p):
+    """class_variable_declaration :   class_variable_declaration COMMA opt_whitespace VARIABLE opt_whitespace
+                                    | class_variable_declaration COMMA opt_whitespace VARIABLE opt_whitespace ASSIGN opt_whitespace static_scalar
+    """
+    p[0] = p[1][:]
+    if len(p) == 6:
+        p[0].append(ClassVariable(p[4]))
+    else:
+        p[0].append(ClassVariable(p[4], p[8]))
+
+def p_class_variable_declaration_2(p):
+    """class_variable_declaration :   VARIABLE opt_whitespace
+                                    | VARIABLE opt_whitespace ASSIGN opt_whitespace static_scalar
+    """
+    if len(p) == 3:
+        p[0] = [ClassVariable(p[1])]
+    else:
+        p[0] = [ClassVariable(p[1], p[5])]
+   
+def p_class_constant_declaration(p):
+    """class_constant_declaration :   class_constant_declaration COMMA opt_whitespace IDENTIFIER opt_whitespace ASSIGN opt_whitespace static_scalar
+                                    | CONST opt_whitespace IDENTIFIER opt_whitespace ASSIGN opt_whitespace static_scalar
+    """
+    if len(p) == 9:
+        p[0] = p[1][:]
+        p[0].append(ClassConstant(p[4], p[8]))
+    if len(p) == 8:
+        p[0] = [ClassConstant(p[3], p[7])]
+
+def p_method_body(p):
+    """method_body :   SEMICOLON opt_whitespace
+                     | LBRACE opt_whitespace statement_list RBRACE opt_whitespace
+    """
+    if len(p) > 3:
+        p[0] = p[3]
 
 def p_static_scalar(p):
     """static_scalar :   common_scalar
@@ -336,7 +493,7 @@ def p_non_empty_static_array_pair_list_2(p):
     """
     if len(p) == 5:
         p[0] = p[1]
-        p[0].append(p[2])
+        p[0].append(p[4])
     if len(p) == 8:
         p[0] = p[1]
         p[0].append(Pair(p[4], p[7]))
@@ -422,7 +579,7 @@ class EmptyStatement:
     def out(self, config):
         return config.indent() + ';'
 
-class FunctionCall:
+class FunctionDeclaration:
     def __init__(self, name, is_reference = False, parameter_list = [], statement_list = []):
         self.name = name
         self.is_reference = is_reference
@@ -453,6 +610,130 @@ class FunctionCall:
         config.decIndent()
         res.append(config.indent())
         res.append('}\n')
+        return ''.join(res)
+
+class ClassDeclaration:
+    def __init__(self, name, entry_type, extends, implements_list, statement_list):
+        self.name = name
+        self.entry_type = entry_type
+        self.extends = extends
+        self.implements_list = implements_list
+        self.statement_list = statement_list
+
+    def out(self, config):
+        res = ['\n']
+        entries = []
+        if self.entry_type is not None:
+            entries.append(self.entry_type)
+        entries.append('class')
+        res.append(' '.join(entries))
+        res.append(' %s' % self.name)
+        if self.extends is not None:
+            res.append(' extends ')
+            res.append(self.extends)
+        if len(self.implements_list) > 0:
+            res.append(' implements ')
+            interfaces = []
+            for interface in self.implements_list:
+                interfaces.append(interface)
+            res.append(', '.join(interfaces))
+        res.append('\n')
+        res.append(config.indent())
+        res.append('{\n')
+        config.incIndent()
+        for statement in self.statement_list:
+            res.append(statement.out(config))
+            res.append('\n')
+        config.decIndent()
+        res.append(config.indent())
+        res.append('}')
+        return ''.join(res)
+
+class ClassVariable:
+    def __init__(self, name, value = None):
+        self.name = name
+        self.value = value
+    
+    def out(self, config):
+        res = [self.name]
+        if self.value is not None:
+            res.append(" = ")
+            res.append(self.value.out(config))
+        return ''.join(res)
+
+class ClassVariableList:
+    def __init__(self, modifier_list, variable_list):
+        self.modifier_list = modifier_list
+        self.variable_list = variable_list
+
+    def out(self, config):
+        res = [config.indent()]
+        for modifier in self.modifier_list:
+            res.append(modifier)
+            res.append(' ')
+        variables = []
+        for variable in self.variable_list:
+            variables.append(variable.out(config))
+        res.append(', '.join(variables))
+        res.append(';')
+        return ''.join(res);
+       
+class ClassConstant:
+    def __init__(self, name, value):
+        self.name = name
+        self.value = value
+
+    def out(self, config):
+        return "%s = %s" % (self.name, self.value.out(config))
+
+class ClassConstantsList:
+    def __init__(self, constant_list):
+        self.constant_list = constant_list
+    
+    def out(self, config):
+        res = [config.indent(), 'const ']
+        constants = []
+        for constant in self.constant_list:
+            constants.append(constant.out(config))
+        res.append(', '.join(constants))
+        res.append(';')
+        return ''.join(res)
+
+class MethodDeclaration:
+    def __init__(self, name, modifier_list, is_reference, parameter_list, statement_list):
+        self.name = name
+        self.modifier_list = modifier_list
+        self.is_reference = is_reference
+        self.parameter_list = parameter_list
+        self.statement_list = statement_list
+
+    def out(self, config):
+        res = ['\n', config.indent()]
+        for modifier in self.modifier_list:
+            res.append('%s ' % modifier)
+        res.append('function ')
+        if self.is_reference:
+            res.append('&')
+        res.append('%s(' % self.name)
+        parameters = []
+        for parameter in self.parameter_list:
+            parameters.append(parameter.out(config))
+        res.append(', '.join(parameters))
+        res.append(')')
+        if self.statement_list is None:
+            # abstract method
+            res.append(';')
+        else:
+            res.append('\n')
+            res.append(config.indent())
+            res.append('{\n')
+            config.incIndent()
+            for statement in self.statement_list:
+                res.append(statement.out(config))
+                res.append('\n')
+            config.decIndent()
+            res.append(config.indent())
+            res.append('}')
         return ''.join(res)
 
 class Parameter:
