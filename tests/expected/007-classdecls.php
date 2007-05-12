@@ -24,6 +24,14 @@ abstract class b implements a1, b1
 {
 }
 
+interface i
+{
+}
+
+interface i extends a
+{
+}
+
 class a
 {
     var $a, $b;
