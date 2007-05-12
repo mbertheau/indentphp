@@ -84,7 +84,8 @@ tokens = (
     'PRIVATE',
     'PROTECTED',
     'STATIC',
-    'CONST'
+    'CONST',
+    'INTERFACE'
 )
 
 @TOKEN(r'<\?php')
@@ -124,7 +125,8 @@ reserved = {
     'private'       : 'PRIVATE',
     'protected'     : 'PROTECTED',
     'static'        : 'STATIC',
-    'const'         : 'CONST'
+    'const'         : 'CONST',
+    'interface'     : 'INTERFACE'
 }
 
 @TOKEN(r'[a-zA-Z_][a-zA-Z_0-9]*')
@@ -296,11 +298,15 @@ def p_opt_class_type(p):
     if len(p) > 1:
         p[0] = p[1]
 
-def p_class_declaration_statement(p):
+def p_class_declaration_statement_1(p):
     """class_declaration_statement :   class_entry_type IDENTIFIER opt_whitespace extends_from implements_list LBRACE opt_whitespace class_statement_list RBRACE opt_whitespace
     """
-#                                     | interface_entry IDENTIFIER opt_whitespace interface_extends_list LBRACE opt_whitespace class_statement_list RBRACE opt_whitespace
-    p[0] = ClassDeclaration(p[2], p[1], p[4], p[5], p[8])
+    p[0] = ClassDeclaration("class", p[2], p[1], p[4], p[5], p[8])
+
+def p_class_declaration_statement_2(p):
+    """class_declaration_statement : INTERFACE opt_whitespace IDENTIFIER opt_whitespace interface_extends_list LBRACE opt_whitespace class_statement_list RBRACE opt_whitespace
+    """
+    p[0] = ClassDeclaration("interface", p[3], None, p[5], [], p[8])
 
 def p_class_entry_type(p):
     """class_entry_type :   CLASS opt_whitespace
@@ -315,7 +321,9 @@ def p_extends_from(p):
                       |
     """
     if len(p) > 1:
-        p[0] = p[3]
+        p[0] = [p[3]]
+    else:
+        p[0] = []
 
 def p_implements_list(p):
     """implements_list :   IMPLEMENTS opt_whitespace interface_list
@@ -335,6 +343,15 @@ def p_interface_list(p):
     else:
         p[0] = p[1]
         p[0].append(p[4])
+
+def p_interface_extends_list(p):
+    """interface_extends_list :   EXTENDS opt_whitespace interface_list
+                                |
+    """
+    if len(p) > 1:
+        p[0] = p[3]
+    else:
+        p[0] = []
 
 def p_class_statement_list(p):
     """class_statement_list :   class_statement_list class_statement
@@ -613,10 +630,11 @@ class FunctionDeclaration:
         return ''.join(res)
 
 class ClassDeclaration:
-    def __init__(self, name, entry_type, extends, implements_list, statement_list):
+    def __init__(self, class_or_interface, name, entry_type, extends_list, implements_list, statement_list):
+        self.class_or_interface = class_or_interface
         self.name = name
         self.entry_type = entry_type
-        self.extends = extends
+        self.extends_list = extends_list
         self.implements_list = implements_list
         self.statement_list = statement_list
 
@@ -625,12 +643,12 @@ class ClassDeclaration:
         entries = []
         if self.entry_type is not None:
             entries.append(self.entry_type)
-        entries.append('class')
+        entries.append(self.class_or_interface)
         res.append(' '.join(entries))
         res.append(' %s' % self.name)
-        if self.extends is not None:
+        if len(self.extends_list) > 0:
             res.append(' extends ')
-            res.append(self.extends)
+            res.append(', '.join(self.extends_list))
         if len(self.implements_list) > 0:
             res.append(' implements ')
             interfaces = []
