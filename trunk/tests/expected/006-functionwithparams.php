@@ -126,5 +126,4 @@ function a($a = array(4 => array(4 => array(4))))
 function a($b = array("foobar" => "barbaz", "quux" => "dragons!"))
 {
 }
-
 ?>
