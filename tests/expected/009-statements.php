@@ -9,4 +9,14 @@ strcmp($key, '');
 MyClass::staticFunction($i, &$j);
 $a[3];
 $a[$a];
+$a == $a;
+$a . $a;
+$a || $a;
+$a && $a;
++$a;
+-$a;
+!$a;
+~$a;
+@file('nul');
+array(3, array(4), '3' => 'foobar', '5' => &$c, &$d);
 ?>

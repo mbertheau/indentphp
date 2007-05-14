@@ -96,8 +96,14 @@ tokens = (
     'RSQBRACKET',
     'DOUBLECOLON',
     'IS_IDENTICAL',
+    'IS_EQUAL',
     'ELSEIF',
-    'BOOLEAN_AND'
+    'BOOLEAN_AND',
+    'BOOLEAN_OR',
+    'EXCL',
+    'TILDE',
+    'DOT',
+    'AT'
 )
 
 @TOKEN(r'<\?php')
@@ -165,8 +171,14 @@ t_php_AMPERSAND = r'&'
 t_php_SEMICOLON = r';'
 t_php_COMMA = r','
 t_php_ASSIGN = r'='
+t_php_EXCL = r'!'
+t_php_TILDE = r'~'
+t_php_DOT = r'\.'
+t_php_AT = r'@'
+t_php_IS_EQUAL = r'=='
 t_php_IS_IDENTICAL = r'==='
 t_php_BOOLEAN_AND = r'&&'
+t_php_BOOLEAN_OR = r'\|\|'
 t_php_DOUBLE_ARROW = r'=>'
 t_php_PLUS = r'\+'
 t_php_MINUS = r'-'
@@ -466,6 +478,9 @@ def p_expr_without_variable_2(p):
 def p_expr_without_variable_7(p):
     """expr_without_variable :    expr IS_IDENTICAL opt_whitespace expr
                                 | expr BOOLEAN_AND opt_whitespace expr
+                                | expr IS_EQUAL opt_whitespace expr
+                                | expr BOOLEAN_OR opt_whitespace expr
+                                | expr DOT opt_whitespace expr
     """
 #                               | variable PLUS_EQUAL opt_whitespace expr
 #                               | variable MINUS_EQUAL opt_whitespace expr
@@ -478,14 +493,12 @@ def p_expr_without_variable_7(p):
 #                               | variable XOR_EQUAL opt_whitespace expr
 #                               | variable SL_EQUAL opt_whitespace expr
 #                               | variable SR_EQUAL opt_whitespace expr
-#                               | expr BOOLEAN_OR opt_whitespace expr
 #                               | expr LOGICAL_OR opt_whitespace expr
 #                               | expr LOGICAL_AND opt_whitespace expr
 #                               | expr LOGICAL_XOR opt_whitespace expr
 #                               | expr PIPE opt_whitespace expr
 #                               | expr AMPERSAND opt_whitespace expr
 #                               | expr CARET opt_whitespace expr
-#                               | expr DOT opt_whitespace expr
 #                               | expr PLUS opt_whitespace expr
 #                               | expr MINUS opt_whitespace expr
 #                               | expr STAR opt_whitespace expr
@@ -494,7 +507,6 @@ def p_expr_without_variable_7(p):
 #                               | expr SL opt_whitespace expr
 #                               | expr SR opt_whitespace expr
 #                               | expr IS_NOT_IDENTICAL opt_whitespace expr
-#                               | expr IS_EQUAL opt_whitespace expr
 #                               | expr IS_NOT_EQUAL opt_whitespace expr
 #                               | expr SMALLER opt_whitespace expr
 #                               | expr IS_SMALLER_OR_EQUAL opt_whitespace expr
@@ -522,14 +534,14 @@ def p_expr_without_variable_7(p):
 #    """
 #    p[0] = PreDecExpr(p[3])
 #
-#def p_expr_without_variable_12(p):
-#    """expr_without_variable :   PLUS opt_whitespace expr
-#                               | MINUS opt_whitespace expr
-#                               | EXCL opt_whitespace expr
-#                               | TILDE opt_whitespace expr
-#    """
-#    p[0] = UnaryExpr(p[1], p[3])
-#
+def p_expr_without_variable_12(p):
+    """expr_without_variable :   PLUS opt_whitespace expr
+                               | MINUS opt_whitespace expr
+                               | EXCL opt_whitespace expr
+                               | TILDE opt_whitespace expr
+    """
+    p[0] = UnaryExpr(p[1], p[3])
+
 #def p_expr_without_variable_13(p):
 #    """expr_without_variable : expr INSTANCEOF opt_whitespace class_name_reference
 #    """
@@ -596,21 +608,21 @@ def p_expr_without_variable_17(p):
 #    """
 #    p[0] = CastExpr(p[3], p[7])
 #
-#def p_expr_without_variable_24(p):
-#    """expr_without_variable : AT opt_whitespace expr
-#    """
-#    p[0] = AtExpr(p[3])
-#
+def p_expr_without_variable_24(p):
+    """expr_without_variable : AT opt_whitespace expr
+    """
+    p[0] = AtExpr(p[3])
+
 def p_expr_without_variable_25(p):
     """expr_without_variable : scalar
     """
     p[0] = p[1]
 
-#def p_expr_without_variable_26(p):
-#    """expr_without_variable : ARRAY opt_whitespace LPAREN opt_whitespace array_pair_list RPAREN opt_whitespace
-#    """
-#    p[0] = ArrayExpr(p[5])
-#
+def p_expr_without_variable_26(p):
+    """expr_without_variable : ARRAY opt_whitespace LPAREN opt_whitespace array_pair_list RPAREN opt_whitespace
+    """
+    p[0] = ArrayExpr(p[5])
+
 #def p_expr_without_variable_27(p):
 #    """expr_without_variable : LBACKTICK opt_whitespace encaps_list RBACKTICK opt_whitespace
 #    """
@@ -745,6 +757,60 @@ def p_isset_variables(p):
     else:
         p[0] = p[1]
         p[0].append(p[4])
+
+def p_array_pair_list(p):
+    """array_pair_list :   non_empty_array_pair_list opt_comma
+                         |
+    """
+    if len(p) > 1:
+        p[0] = p[1]
+    else:
+        p[0] = []
+
+def p_non_empty_array_pair_list_1(p):
+    """non_empty_array_pair_list : expr DOUBLE_ARROW opt_whitespace expr
+    """
+    p[0] = [Pair(p[1], p[4])]
+
+def p_non_empty_array_pair_list_2(p):
+    """non_empty_array_pair_list : expr
+    """
+    p[0] = [p[1]]
+
+def p_non_empty_array_pair_list_3(p):
+    """non_empty_array_pair_list : expr DOUBLE_ARROW opt_whitespace AMPERSAND opt_whitespace variable
+    """
+    p[0] = [Pair(p[1], ReferenceExpr(p[6]))]
+
+def p_non_empty_array_pair_list_4(p):
+    """non_empty_array_pair_list : AMPERSAND opt_whitespace variable
+    """
+    p[0] = [ReferenceExpr(p[3])]
+
+def p_non_empty_array_pair_list_5(p):
+    """non_empty_array_pair_list : non_empty_array_pair_list COMMA opt_whitespace expr DOUBLE_ARROW opt_whitespace expr
+    """
+    p[0] = p[1]
+    p[0].append(Pair(p[4], p[7]))
+
+def p_non_empty_array_pair_list_6(p):
+    """non_empty_array_pair_list : non_empty_array_pair_list COMMA opt_whitespace expr
+    """
+    p[0] = p[1]
+    p[0].append(p[4])
+
+def p_non_empty_array_pair_list_7(p):
+    """non_empty_array_pair_list : non_empty_array_pair_list COMMA opt_whitespace expr DOUBLE_ARROW opt_whitespace AMPERSAND opt_whitespace variable
+    """
+    p[0] = p[1]
+    p[0].append(Pair(p[4], ReferenceExpr(p[9])))
+
+def p_non_empty_array_pair_list_8(p):
+    """non_empty_array_pair_list : non_empty_array_pair_list COMMA opt_whitespace AMPERSAND opt_whitespace variable
+    """
+    p[0] = p[1]
+    p[0].append(ReferenceExpr(p[6]))
+
 
 def p_function_declaration_statement(p):
     """function_declaration_statement : FUNCTION whitespace is_reference opt_whitespace IDENTIFIER opt_whitespace LPAREN opt_whitespace parameter_list RPAREN opt_whitespace LBRACE opt_whitespace statement_list RBRACE opt_whitespace
@@ -1494,6 +1560,19 @@ class ParenExpr:
         res = ['(', self.expr.out(config), ')']
         return ''.join(res)
 
+class ArrayExpr:
+    def __init__(self, element_list):
+        self.element_list = element_list
+
+    def out(self, config):
+        res = ['array(']
+        elements = []
+        for element in self.element_list:
+            elements.append(element.out(config))
+        res.append(', '.join(elements))
+        res.append(')')
+        return ''.join(res)
+
 class OperationExpr:
     def __init__(self, lhs, op, rhs):
         self.lhs = lhs
@@ -1503,6 +1582,21 @@ class OperationExpr:
     def out(self, config):
         result = [self.lhs.out(config), ' ', self.op, ' ', self.rhs.out(config)]
         return ''.join(result)
+
+class UnaryExpr:
+    def __init__(self, op, expr):
+        self.op = op
+        self.expr = expr
+
+    def out(self, config):
+        return '%s%s' % (self.op, self.expr.out(config))
+
+class AtExpr:
+    def __init__(self, expr):
+        self.expr = expr
+    
+    def out(self, config):
+        return '@%s' % self.expr.out(config)
 
 # main
 
