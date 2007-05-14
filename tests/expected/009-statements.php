@@ -5,6 +5,7 @@ $a === $b;
 ($a);
 THIS_IS_MY_CONSTANT;
 in_array($haystack_or_needle, $needle_or_haystack);
+strcmp($key, '');
 MyClass::staticFunction($i, &$j);
 $a[3];
 $a[$a];
