@@ -52,5 +52,9 @@ class a
     {
         ;
     }
+
+    function a($a, $b)
+    {
+    }
 }
 ?>

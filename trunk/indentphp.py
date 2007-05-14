@@ -94,7 +94,9 @@ tokens = (
     'QUESTION',
     'LSQBRACKET',
     'RSQBRACKET',
-    'DOUBLECOLON'
+    'DOUBLECOLON',
+    'IS_IDENTICAL',
+    'ELSEIF'
 )
 
 @TOKEN(r'<\?php')
@@ -140,7 +142,8 @@ reserved = {
     'empty'         : 'EMPTY',
     'return'        : 'RETURN',
     'else'          : 'ELSE',
-    'isset'         : 'ISSET'
+    'isset'         : 'ISSET',
+    'elseif'        : 'ELSEIF'
 }
 
 @TOKEN(r'[a-zA-Z_][a-zA-Z_0-9]*')
@@ -161,6 +164,7 @@ t_php_AMPERSAND = r'&'
 t_php_SEMICOLON = r';'
 t_php_COMMA = r','
 t_php_ASSIGN = r'='
+t_php_IS_IDENTICAL = r'==='
 t_php_DOUBLE_ARROW = r'=>'
 t_php_PLUS = r'\+'
 t_php_MINUS = r'-'
@@ -329,11 +333,11 @@ def p_statement_12(p):
 #    """
 #    p[0] = ReturnStatement(p[3])
 #
-#def p_statement_14(p):
-#    """statement : RETURN opt_whitespace variable SEMICOLON opt_whitespace
-#    """
-#    p[0] = ReturnStatement(p[3])
-#
+def p_statement_14(p):
+    """statement : RETURN opt_whitespace variable SEMICOLON opt_whitespace
+    """
+    p[0] = ReturnStatement(p[3])
+
 #def p_statement_15(p):
 #    """statement : GLOBAL opt_whitespace global_var_list SEMICOLON opt_whitespace
 #    """
@@ -354,11 +358,11 @@ def p_statement_12(p):
 #    """
 #    p[0] = InlineHTMLStatement(p[1])
 #
-#def p_statement_19(p):
-#    """statement : expr SEMICOLON opt_whitespace
-#    """
-#    p[0] = ExpressionStatement(p[1])
-#
+def p_statement_19(p):
+    """statement : expr SEMICOLON opt_whitespace
+    """
+    p[0] = ExpressionStatement(p[1])
+
 #def p_statement_20(p):
 #    """statement : USE opt_whitespace use_filename SEMICOLON opt_whitespace
 #    """
@@ -390,7 +394,7 @@ def p_statement_25(p):
     p[0] = EmptyStatement()
 
 #def p_statement_26(p):
-#    """statement : TRY opt_whitespace LBRACE opt_whitespace statement_list RBRACE opt_whitespace CATCH opt_whitespace LPAREN opt_whitespace fully_qualified_class_name VARIABLE opt_whitespace RPAREN opt_whitespace LBRACE opt_whitespace statement_list RBRACE opt_whitespace additional_catches
+#    """statement : TRY opt_whitespace LBRACE opt_whitespace statement_list RBRACE opt_whitespace CATCH opt_whitespace LPAREN opt_whitespace IDENTIFIER opt_whitespace VARIABLE opt_whitespace RPAREN opt_whitespace LBRACE opt_whitespace statement_list RBRACE opt_whitespace additional_catches
 #    """
 #    p[0] = TryStatement(p[5], p[12], p[13], ...)
 #
@@ -401,12 +405,13 @@ def p_statement_25(p):
 
 def p_elseif_list(p):
     """elseif_list : """
-    pass
+    p[0] = []
 
-#def p_elseif_list_2(p):
-#    """elseif_list : elseif_list ELSEIF opt_whitespace LPAREN opt_whitespace expr RPAREN opt_whitespace statement
-#    """
-#    pass
+def p_elseif_list_2(p):
+    """elseif_list : elseif_list ELSEIF opt_whitespace LPAREN opt_whitespace expr RPAREN opt_whitespace statement
+    """
+    p[0] = p[1]
+    p[0].append((p[6], p[9]))
 
 def p_else_single_1(p):
     """else_single : """
@@ -419,7 +424,7 @@ def p_else_single_2(p):
 def p_expr_1(p):
     """expr : variable
     """
-    p[0] = VariableExpr(p[1])
+    p[0] = p[1]
 
 def p_expr_2(p):
     """expr : expr_without_variable
@@ -456,8 +461,10 @@ def p_expr_without_variable_2(p):
 #    """
 #    p[0] = CloneExpr(p[3])
 #
-#def p_expr_without_variable_7(p):
-#    """expr_without_variable :   variable PLUS_EQUAL opt_whitespace expr
+def p_expr_without_variable_7(p):
+    """expr_without_variable :    expr IS_IDENTICAL opt_whitespace expr
+    """
+#                               | variable PLUS_EQUAL opt_whitespace expr
 #                               | variable MINUS_EQUAL opt_whitespace expr
 #                               | variable MUL_EQUAL opt_whitespace expr
 #                               | variable DIV_EQUAL opt_whitespace expr
@@ -484,7 +491,6 @@ def p_expr_without_variable_2(p):
 #                               | expr PERCENT opt_whitespace expr
 #                               | expr SL opt_whitespace expr
 #                               | expr SR opt_whitespace expr
-#                               | expr IS_IDENTICAL opt_whitespace expr
 #                               | expr IS_NOT_IDENTICAL opt_whitespace expr
 #                               | expr IS_EQUAL opt_whitespace expr
 #                               | expr IS_NOT_EQUAL opt_whitespace expr
@@ -492,9 +498,8 @@ def p_expr_without_variable_2(p):
 #                               | expr IS_SMALLER_OR_EQUAL opt_whitespace expr
 #                               | expr GREATER opt_whitespace expr
 #                               | expr IS_GREATER_OR_EQUAL opt_whitespace expr
-#    """
-#    p[0] = OperationExpression(p[1], p[2], p[4])
-#
+    p[0] = OperationExpr(p[1], p[2], p[4])
+
 #def p_expr_without_variable_8(p):
 #    """expr_without_variable : variable INC opt_whitespace
 #    """
@@ -528,11 +533,11 @@ def p_expr_without_variable_2(p):
 #    """
 #    p[0] = InstanceOfExpr(p[1], p[4])
 #
-#def p_expr_without_variable_14(p):
-#    """expr_without_variable : LPAREN opt_whitespace expr RPAREN opt_whitespace
-#    """
-#    p[0] = ParenExpr(p[3])
-#
+def p_expr_without_variable_14(p):
+    """expr_without_variable : LPAREN opt_whitespace expr RPAREN opt_whitespace
+    """
+    p[0] = ParenExpr(p[3])
+
 def p_expr_without_variable_15(p):
     """expr_without_variable : expr QUESTION opt_whitespace expr COLON opt_whitespace expr
     """
@@ -594,11 +599,11 @@ def p_expr_without_variable_17(p):
 #    """
 #    p[0] = AtExpr(p[3])
 #
-#def p_expr_without_variable_25(p):
-#    """expr_without_variable : scalar
-#    """
-#    p[0] = ScalarExpr(p[1])
-#
+def p_expr_without_variable_25(p):
+    """expr_without_variable : scalar
+    """
+    p[0] = p[1]
+
 #def p_expr_without_variable_26(p):
 #    """expr_without_variable : ARRAY opt_whitespace LPAREN opt_whitespace array_pair_list RPAREN opt_whitespace
 #    """
@@ -614,6 +619,22 @@ def p_expr_without_variable_17(p):
 #    """
 #    p[0] = PrintExpr(p[3])
 
+def p_scalar_1(p):
+    """scalar : IDENTIFIER opt_whitespace
+    """
+    p[0] = Scalar(p[1])
+
+def p_scalar_2(p):
+    """scalar : common_scalar
+    """
+#                | STRING_VARNAME???
+#                | class_constant
+#                | common_scalar
+#                | SINGLEQUOTE encaps_list SINGLEQUOTE
+#                | DOUBLEQUOTE encaps_list DOUBLEQUOTE
+#                | START_HEREDOC encaps_list END_HEREDOC
+    p[0] = p[1]
+
 def p_variable_1(p):
     """variable : base_variable_with_function_calls
     """
@@ -628,10 +649,61 @@ def p_base_variable_with_function_calls_1(p):
     """
     p[0] = p[1]
 
-# def p_base_variable_with_function_calls_2(p):
-#     """p_base_variable_with_function_calls : function_call
-#     """
-#
+def p_base_variable_with_function_calls_2(p):
+     """base_variable_with_function_calls : function_call
+     """
+     p[0] = p[1]
+
+def p_function_call_1(p):
+    """function_call : IDENTIFIER opt_whitespace LPAREN opt_whitespace function_call_parameter_list RPAREN opt_whitespace
+    """
+#                       | IDENTIFIER opt_whitespace DOUBLECOLON opt_whitespace variable_without_objects LPAREN opt_whitespace function_call_parameter_list RPAREN opt_whitespace
+#                       | variable_without_objects LPAREN opt_whitespace function_call_parameter_list RPAREN opt_whitespace
+    p[0] = FunctionCallExpr(p[1], p[5])
+
+def p_function_call_2(p):
+    """function_call : IDENTIFIER opt_whitespace DOUBLECOLON opt_whitespace IDENTIFIER opt_whitespace LPAREN opt_whitespace function_call_parameter_list RPAREN opt_whitespace
+    """
+    p[0] = StaticMethodCallExpr(p[1], p[5], p[9])
+
+def p_function_call_parameter_list(p):
+    """function_call_parameter_list :   non_empty_function_call_parameter_list
+                                      |
+    """
+    p[0] = []
+    if len(p) > 1:
+        p[0] = p[1]
+
+def p_non_empty_function_call_parameter_list_1(p):
+    """non_empty_function_call_parameter_list : expr_without_variable
+    """
+    p[0] = [p[1]]
+
+def p_non_empty_function_call_parameter_list_2(p):
+    """non_empty_function_call_parameter_list :   variable
+                                                | AMPERSAND opt_whitespace variable
+    """
+    if len(p) > 2:
+        p[0] = [ReferenceExpr(p[3])]
+    else:
+        p[0] = [p[1]]
+
+def p_non_empty_function_call_parameter_list_3(p):
+    """non_empty_function_call_parameter_list :   non_empty_function_call_parameter_list COMMA opt_whitespace expr_without_variable
+    """
+    p[0] = p[1]
+    p[0].append(p[2])
+
+def p_non_empty_function_call_parameter_list_4(p):
+    """non_empty_function_call_parameter_list :   non_empty_function_call_parameter_list COMMA opt_whitespace variable
+                                                | non_empty_function_call_parameter_list COMMA opt_whitespace AMPERSAND opt_whitespace variable
+    """
+    p[0] = p[1]
+    if len(p) > 5:
+        p[0].append(ReferenceExpr(p[6]))
+    else:
+        p[0].append(p[4])
+
 def p_base_variable(p):
     """base_variable :   reference_variable
     """
@@ -647,7 +719,7 @@ def p_reference_variable(p):
     if len(p) == 2:
         p[0] = p[1]
     else:
-        p[0] = ArraySubscript(p[1], p[4])
+        p[0] = ArraySubscriptExpr(p[1], p[4])
 
 def p_dim_offset(p):
     """dim_offset :   expr
@@ -660,7 +732,7 @@ def p_compound_variable(p):
     """compound_variable :   VARIABLE opt_whitespace
     """
 #                           | DOLLAR opt_whitespace LBRACE opt_whitespace expr RBRACE opt_whitespace
-    p[0] = Variable(p[1])
+    p[0] = VariableExpr(p[1])
 
 def p_isset_variables(p):
     """isset_variables :   variable
@@ -698,7 +770,7 @@ def p_non_empty_parameter_list(p):
     """
     if len(p) > 2:
         p[0] = p[1]
-        p[0].append(Parameter(p[4]))
+        p[0].append(p[4])
     else:
         p[0] = [p[1]]
 
@@ -1051,7 +1123,19 @@ class IfStatement:
             config.incIndent()
             res.append(self.body.out(config))
             config.decIndent()
+        for elseif in self.elseif_list:
+            res.append(config.indent())
+            res.append('elseif (')
+            res.append(elseif[0].out(config))
+            res.append(')\n')
+            if isinstance(elseif[1], BlockStatement):
+                res.append(elseif[1].out(config))
+            else:
+                config.incIndent()
+                res.append(elseif[1].out(config))
+                config.decIndent()
         if self.else_single is not None:
+            res.append(config.indent())
             res.append('else\n')
             if isinstance(self.else_single, BlockStatement):
                 res.append(self.else_single.out(config))
@@ -1072,6 +1156,24 @@ class BlockStatement:
         config.decIndent()
         res.append(config.indent())
         res.append('}\n')
+        return ''.join(res)
+
+class ExpressionStatement:
+    def __init__(self, expr):
+        self.expr = expr
+
+    def out(self, config):
+        res = [config.indent(), self.expr.out(config), ';\n']
+        return ''.join(res)
+
+class ReturnStatement:
+    def __init__(self, expr = None):
+        self.expr = expr
+    def out(self, config):
+        res = [config.indent(), 'return']
+        if self.expr is not None:
+            res.append(' ' + self.expr.out(config))
+        res.append(';\n')
         return ''.join(res)
 
 class FunctionDeclaration:
@@ -1132,11 +1234,15 @@ class ClassDeclaration:
         res.append('\n')
         res.append(config.indent())
         res.append('{\n')
-        config.incIndent()
-        for statement in self.statement_list:
-            res.append(statement.out(config))
-            res.append('\n')
-        config.decIndent()
+        if len(self.statement_list) > 0:
+            config.incIndent()
+            res.append(self.statement_list[0].out(config))
+            for statement in self.statement_list[1:]:
+                # add empty line before certain statements if it isn't the first
+                if statement.__class__ in (MethodDeclaration,):
+                    res.append('\n')
+                res.append(statement.out(config))
+            config.decIndent()
         res.append(config.indent())
         res.append('}\n')
         return ''.join(res)
@@ -1167,7 +1273,7 @@ class ClassVariableList:
         for variable in self.variable_list:
             variables.append(variable.out(config))
         res.append(', '.join(variables))
-        res.append(';')
+        res.append(';\n')
         return ''.join(res);
 
 class ClassConstant:
@@ -1188,7 +1294,7 @@ class ClassConstantsList:
         for constant in self.constant_list:
             constants.append(constant.out(config))
         res.append(', '.join(constants))
-        res.append(';')
+        res.append(';\n')
         return ''.join(res)
 
 class MethodDeclaration:
@@ -1200,7 +1306,7 @@ class MethodDeclaration:
         self.statement_list = statement_list
 
     def out(self, config):
-        res = ['\n', config.indent()]
+        res = [config.indent()]
         for modifier in self.modifier_list:
             res.append('%s ' % modifier)
         res.append('function ')
@@ -1224,6 +1330,7 @@ class MethodDeclaration:
             config.decIndent()
             res.append(config.indent())
             res.append('}')
+        res.append('\n')
         return ''.join(res)
 
 class Parameter:
@@ -1282,14 +1389,14 @@ class Pair:
     def out(self, config):
         return '%s => %s' % (self.key.out(config), self.value.out(config))
 
-class Variable:
+class VariableExpr:
     def __init__(self, var):
         self.var = var
 
     def out(self, config):
         return self.var
 
-class ArraySubscript:
+class ArraySubscriptExpr:
     def __init__(self, var, index):
         self.var = var
         self.index = index
@@ -1341,9 +1448,59 @@ class TernaryIfExpr:
         res = [self.cond.out(config), ' ? ', self.body_true.out(config), ' : ', self.body_false.out(config)]
         return ''.join(res)
 
-class ReturnStatement:
+class ReferenceExpr:
+    def __init__(self, expr):
+        self.expr = expr
+
     def out(self, config):
-        return config.indent() + 'return;\n'
+        return '&' + self.expr.out(config)
+
+class FunctionCallExpr:
+    def __init__(self, name, parameter_list):
+        self.name = name
+        self.parameter_list = parameter_list
+
+    def out(self, config):
+        res = [self.name, '(']
+        parameters = []
+        for parameter in self.parameter_list:
+            parameters.append(parameter.out(config))
+        res.append(', '.join(parameters))
+        res.append(')')
+        return ''.join(res)
+
+class StaticMethodCallExpr:
+    def __init__(self, class_name, name, parameter_list):
+        self.class_name = class_name
+        self.name = name
+        self.parameter_list = parameter_list
+
+    def out(self, config):
+        res = [self.class_name, '::', self.name, '(']
+        parameters = []
+        for parameter in self.parameter_list:
+            parameters.append(parameter.out(config))
+        res.append(', '.join(parameters))
+        res.append(')')
+        return ''.join(res)
+
+class ParenExpr:
+    def __init__(self, expr):
+        self.expr = expr
+
+    def out(self, config):
+        res = ['(', self.expr.out(config), ')']
+        return ''.join(res)
+
+class OperationExpr:
+    def __init__(self, lhs, op, rhs):
+        self.lhs = lhs
+        self.op = op
+        self.rhs = rhs
+
+    def out(self, config):
+        result = [self.lhs.out(config), ' ', self.op, ' ', self.rhs.out(config)]
+        return ''.join(result)
 
 # main
 
