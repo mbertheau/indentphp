@@ -24,5 +24,6 @@ class a
     abstract function a();
     final public function a($b = array(0x9F, 0x9E)) {}
     function &a() { ; }
+    function a($a, $b) {}
 }
 ?>

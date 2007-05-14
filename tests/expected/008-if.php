@@ -32,4 +32,28 @@ if (empty($var))
 }
 else
     return;
+
+if ($a)
+{
+    ;
+}
+elseif ($b)
+    ;
+elseif ($c)
+    ;
+else
+    ;
+
+if ($a)
+{
+    ;
+}
+elseif ($b)
+{
+    return;
+}
+elseif ($c)
+    ;
+else
+    ;
 ?>
