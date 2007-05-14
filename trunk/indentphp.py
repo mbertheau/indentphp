@@ -96,7 +96,8 @@ tokens = (
     'RSQBRACKET',
     'DOUBLECOLON',
     'IS_IDENTICAL',
-    'ELSEIF'
+    'ELSEIF',
+    'BOOLEAN_AND'
 )
 
 @TOKEN(r'<\?php')
@@ -165,6 +166,7 @@ t_php_SEMICOLON = r';'
 t_php_COMMA = r','
 t_php_ASSIGN = r'='
 t_php_IS_IDENTICAL = r'==='
+t_php_BOOLEAN_AND = r'&&'
 t_php_DOUBLE_ARROW = r'=>'
 t_php_PLUS = r'\+'
 t_php_MINUS = r'-'
@@ -463,6 +465,7 @@ def p_expr_without_variable_2(p):
 #
 def p_expr_without_variable_7(p):
     """expr_without_variable :    expr IS_IDENTICAL opt_whitespace expr
+                                | expr BOOLEAN_AND opt_whitespace expr
     """
 #                               | variable PLUS_EQUAL opt_whitespace expr
 #                               | variable MINUS_EQUAL opt_whitespace expr
@@ -476,7 +479,6 @@ def p_expr_without_variable_7(p):
 #                               | variable SL_EQUAL opt_whitespace expr
 #                               | variable SR_EQUAL opt_whitespace expr
 #                               | expr BOOLEAN_OR opt_whitespace expr
-#                               | expr BOOLEAN_AND opt_whitespace expr
 #                               | expr LOGICAL_OR opt_whitespace expr
 #                               | expr LOGICAL_AND opt_whitespace expr
 #                               | expr LOGICAL_XOR opt_whitespace expr
@@ -692,7 +694,7 @@ def p_non_empty_function_call_parameter_list_3(p):
     """non_empty_function_call_parameter_list :   non_empty_function_call_parameter_list COMMA opt_whitespace expr_without_variable
     """
     p[0] = p[1]
-    p[0].append(p[2])
+    p[0].append(p[4])
 
 def p_non_empty_function_call_parameter_list_4(p):
     """non_empty_function_call_parameter_list :   non_empty_function_call_parameter_list COMMA opt_whitespace variable
