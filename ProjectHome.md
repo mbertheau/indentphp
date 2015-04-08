@@ -1,0 +1,1 @@
+indentphp is a command line PHP indenter. It comes with a PyGTK GUI configuration application that writes indentphp configuration files. It is delivered with a set of configurations for standard coding styles, like the PEAR coding style.
